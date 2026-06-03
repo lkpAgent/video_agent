@@ -1,0 +1,30 @@
+# 视频自动生成智能体
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# 环境变量
+.env
+
+# 输出文件
+output/
+*.webm
+*.mp4
+*.mp3
+*.png
+*.jpg
+*.html
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

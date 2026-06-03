@@ -1,0 +1,16 @@
+# 视频自动生成智能体依赖
+openai>=1.0.0           # LLM API (兼容各种大模型)
+edge-tts>=6.1.0         # 免费中文 TTS
+duckduckgo-search>=5.0  # 免费搜索
+beautifulsoup4>=4.12    # 网页内容提取
+lxml>=5.0              # HTML 解析加速
+playwright>=1.40.0      # 浏览器自动化 + 视频录制
+python-dotenv>=1.0.0    # 环境变量
+requests>=2.31.0        # HTTP 请求
+rich>=13.0.0            # 美观控制台输出
+fastapi>=0.110.0        # Web 框架
+uvicorn>=0.29.0         # ASGI 服务器
+python-multipart>=0.0.9 # 文件上传支持
+tavily-python>=0.3.0    # Tavily 搜索（可选）
+selenium>=4.15.0        # Selenium 录制（CentOS 7 兼容）
+webdriver-manager>=4.0  # 自动管理 ChromeDriver
