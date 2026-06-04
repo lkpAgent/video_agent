@@ -115,6 +115,9 @@ def _generate_science_video(task_id, topic, voice, theme, name, avatar, company,
             "video": Path(video_path).name, "title": script.get("title", topic)
         })
     except Exception as e:
+        import traceback
+        console.print(f"[red]❌ {e}[/red]")
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
         tasks[task_id].update({"status": "error", "detail": f"❌ {e}"})
     finally:
         config.TEMP_DIR = orig_temp
@@ -199,6 +202,9 @@ def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, 
             "video": Path(video_path).name, "title": title
         })
     except Exception as e:
+        import traceback
+        console.print(f"[red]❌ {e}[/red]")
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
         tasks[task_id].update({"status": "error", "detail": f"❌ {e}"})
     finally:
         config.TEMP_DIR = orig_temp

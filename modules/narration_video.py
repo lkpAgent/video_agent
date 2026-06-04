@@ -21,6 +21,7 @@ import json
 import time
 import base64
 import asyncio
+import shutil
 from pathlib import Path
 from rich.console import Console
 from rich.progress import Progress
@@ -77,7 +78,7 @@ def generate_narration_audio(sentences: list[str]) -> list[dict]:
     from modules.tts import tts_generate
 
     provider = config.TTS_PROVIDER.lower()
-    provider_name = "ElevenLabs 克隆" if provider == "elevenlabs" else "Edge TTS"
+    provider_name = {"elevenlabs": "ElevenLabs 克隆", "doubao": "豆包声音复刻"}.get(provider, "Edge TTS")
     console.print(f"\n🔊 [bold green]正在生成口播配音 ({provider_name})...[/bold green]")
 
     audio_dir = os.path.join(config.TEMP_DIR, "narration_audio")
@@ -360,9 +361,12 @@ setTimeout(()=>{{if(!window.__READY)window.__READY=true;}},2000);
 
 
 def record_narration_video(html_path: str, output_filename: str = None) -> str:
-    """录制口播视频 + 合成音频（支持 Playwright / Selenium）"""
-
+    """录制口播视频（自动选择引擎）"""
     engine = config.RECORD_ENGINE.lower()
+    # Windows 没有 Xvfb，强制 Playwright
+    if engine == "selenium" and not shutil.which("Xvfb"):
+        console.print("[yellow]Windows 不支持 Selenium 录制，回退 Playwright[/yellow]")
+        engine = "playwright"
     if engine == "selenium":
         return _record_narration_selenium(html_path, output_filename)
     else:
@@ -460,9 +464,9 @@ def _record_narration_playwright(html_path: str, output_filename: str = None) ->
             ]
         )
         context = browser.new_context(
-            viewport={{"width": config.VIDEO_WIDTH, "height": config.VIDEO_HEIGHT}},
+            viewport={"width": config.VIDEO_WIDTH, "height": config.VIDEO_HEIGHT},
             record_video_dir=video_dir,
-            record_video_size={{"width": config.VIDEO_WIDTH, "height": config.VIDEO_HEIGHT}},
+            record_video_size={"width": config.VIDEO_WIDTH, "height": config.VIDEO_HEIGHT},
         )
         page = context.new_page()
         file_url = f"file:///{html_path.replace(chr(92), '/')}"
@@ -507,6 +511,12 @@ def _record_narration_playwright(html_path: str, output_filename: str = None) ->
 
         if audio_files:
             mp4_path = str(Path(video_path).resolve())
+
+            # 检查 ffmpeg 是否可用
+            if not shutil.which("ffmpeg"):
+                console.print("[red]❌ 找不到 ffmpeg！请安装: winget install ffmpeg[/red]")
+                return str(webm_path)
+
             console.print(f"🔄 正在合成视频 + {len(audio_files)} 段配音 → MP4...")
 
             inputs = []

@@ -14,6 +14,8 @@ ElevenLabs 使用步骤：
 
 import os
 import asyncio
+import uuid
+import base64
 import requests
 from typing import Optional
 from rich.console import Console
@@ -33,8 +35,9 @@ def tts_generate(text: str, output_path: str) -> str:
 
     if provider == "elevenlabs":
         return _elevenlabs_tts(text, output_path)
+    elif provider == "doubao":
+        return _doubao_tts(text, output_path)
     else:
-        # 默认 edge-tts
         return _edge_tts_sync(text, output_path)
 
 
@@ -76,6 +79,44 @@ async def _edge_tts_async(text: str, output_path: str, retries=3):
 
 
 # ====== ElevenLabs（声音克隆）======
+
+# ====== 豆包 TTS（声音复刻）======
+
+def _doubao_tts(text: str, output_path: str) -> str:
+    """豆包（火山引擎）声音复刻 TTS"""
+    api_key = config.DOUBAO_TTS_API_KEY
+    voice_type = config.DOUBAO_TTS_VOICE_TYPE
+
+    if not api_key:
+        raise ValueError("请在 .env 中设置 DOUBAO_API_KEY")
+    if not voice_type:
+        raise ValueError("请在 .env 中设置 DOUBAO_TTS_VOICE_TYPE（声音克隆后获得的 voice_type）")
+
+    url = "https://openspeech.bytedance.com/api/v1/tts"
+    headers = {"x-api-key": api_key, "Content-Type": "application/json"}
+
+    payload = {
+        "app": {"cluster": config.DOUBAO_TTS_CLUSTER},
+        "user": {"uid": "video_agent"},
+        "audio": {"voice_type": voice_type, "encoding": "mp3", "speed_ratio": 1.0},
+        "request": {"reqid": uuid.uuid4().hex, "text": text, "operation": "query"}
+    }
+
+    resp = requests.post(url, json=payload, headers=headers, timeout=120)
+    resp.raise_for_status()
+    result = resp.json()
+
+    if result.get("code") != 3000:
+        raise RuntimeError(f"豆包 TTS 失败: {result.get('message', 'unknown')}")
+
+    audio_b64 = result.get("data", "")
+    if not audio_b64:
+        raise RuntimeError("豆包 TTS 未返回音频数据")
+
+    with open(output_path, "wb") as f:
+        f.write(base64.b64decode(audio_b64))
+    return output_path
+
 
 def _elevenlabs_tts(text: str, output_path: str) -> str:
     """ElevenLabs 语音合成（支持克隆声音）"""
@@ -131,6 +172,8 @@ async def _generate_one_shot_audio(script: dict, output_path: str):
     provider = config.TTS_PROVIDER.lower()
     if provider == "elevenlabs":
         _elevenlabs_tts(full_text, output_path)
+    elif provider == "doubao":
+        _doubao_tts(full_text, output_path)
     else:
         await _edge_tts_async(full_text, output_path)
 

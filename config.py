@@ -34,9 +34,15 @@ class Config:
     IMAGE_QUALITY: str = os.getenv("IMAGE_QUALITY", "auto")
     # 豆包（Doubao / 火山引擎）
     DOUBAO_API_KEY: str = os.getenv("DOUBAO_API_KEY", "")
+    DOUBAO_ACCESS_KEY: str = os.getenv("DOUBAO_ACCESS_KEY", "")
     DOUBAO_MODEL: str = os.getenv("DOUBAO_MODEL", "doubao-seedream-4-5-251128")
     DOUBAO_SIZE: str = os.getenv("DOUBAO_SIZE", "2K")
-    # 存储图片的目录
+    # 豆包声音克隆
+    DOUBAO_SPEAKER_ID: str = os.getenv("DOUBAO_SPEAKER_ID", "")  # 克隆后的音色 ID
+    # 豆包 TTS（声音复刻）
+    DOUBAO_TTS_API_KEY: str = os.getenv("DOUBAO_TTS_API_KEY", DOUBAO_API_KEY)
+    DOUBAO_TTS_VOICE_TYPE: str = os.getenv("DOUBAO_TTS_VOICE_TYPE", "")
+    DOUBAO_TTS_CLUSTER: str = os.getenv("DOUBAO_TTS_CLUSTER", "volcano_icl")
     IMAGE_OUTPUT_DIR: str = os.getenv("IMAGE_OUTPUT_DIR", "./output/images")
 
     # ======== TTS 配置 ========
