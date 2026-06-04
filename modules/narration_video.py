@@ -36,7 +36,7 @@ def split_sentences(text: str) -> list[str]:
     智能拆句：按中英文标点拆分
     """
     # 先按常见标点拆分
-    raw = re.split(r'(?<=[。！？；\n\.\!\?;])', text)
+    raw = re.split(r'(?<=[。！？\n\.\!\?])', text)
     sentences = []
     for s in raw:
         s = s.strip()
@@ -95,7 +95,7 @@ def generate_narration_audio(sentences: list[str]) -> list[dict]:
         if dur <= 0:
             dur = len(s) / 4.0
             console.print(f"   [yellow]ffprobe 失败，用字数估算: {dur:.1f}s[/yellow]")
-        dur = max(1.5, round(dur + 0.5, 1))  # +0.5秒缓冲，对齐实际播放
+        dur = max(1.5, round(dur, 1))
 
         audio_data.append({"path": path, "text": s, "duration": dur})
         audio_files.append(path)
@@ -104,8 +104,25 @@ def generate_narration_audio(sentences: list[str]) -> list[dict]:
     full_path = os.path.join(audio_dir, "narration_full.mp3")
     _merge_narration_audio(audio_files, full_path)
 
-    total = sum(d["duration"] for d in audio_data)
-    console.print(f"✅ [green]配音完成，总时长 {total:.1f} 秒[/green]\n")
+    # 用完整合并音频的真实时长分配每句时间
+    real_total = _get_mp3_duration(full_path)
+    if real_total <= 0:
+        real_total = sum(d["duration"] for d in audio_data)
+    total_chars = sum(len(s) for s in sentences)
+
+    # 按字数比例重新分配时长
+    allocated = 0.0
+    for i, d in enumerate(audio_data):
+        ratio = len(d["text"]) / max(total_chars, 1)
+        if i == len(audio_data) - 1:
+            dur = round(real_total - allocated, 1)
+        else:
+            dur = max(1.5, round(real_total * ratio, 1))
+            allocated += dur
+        d["duration"] = dur
+        console.print(f"   [{i+1}/{len(sentences)}] {dur:.1f}s | {d['text'][:30]}...")
+
+    console.print(f"✅ [green]配音完成，真实总时长 {real_total:.1f} 秒[/green]\n")
     return audio_data
 
 
@@ -177,8 +194,8 @@ def generate_narration_html(
     """
     生成口播风格的动态 HTML 页面
     """
-    # 总时长精确匹配音频时长（不要多余缓冲）
-    total = round(sum(a["duration"] for a in audio_data), 1)
+    # 加 2 秒缓冲，确保视频不早于音频结束
+    total = round(sum(a["duration"] for a in audio_data) + 2, 1)
     audio_json = json.dumps(audio_data, ensure_ascii=False)
 
     # 头像处理
@@ -421,7 +438,7 @@ def _record_narration_selenium(html_path: str, output_filename: str = None) -> s
             "-c:v", "libx264", "-preset", "fast", "-crf", "22",
             "-c:a", "aac", "-b:a", "192k", "-pix_fmt", "yuv420p",
             "-movflags", "+faststart",
-            "-shortest", "-y", mp4_result
+            "-y", mp4_result
         ]
         console.print(f"   [dim]ffmpeg filter concat {len(audio_files)} 段音频[/dim]")
 
@@ -482,7 +499,7 @@ def _record_narration_playwright(html_path: str, output_filename: str = None) ->
 
         # 从页面获取总时长
         try:
-            total_duration = page.evaluate("() => total") + 2
+            total_duration = page.evaluate("() => total") + 3
         except Exception:
             total_duration = 30
 
@@ -539,7 +556,7 @@ def _record_narration_playwright(html_path: str, output_filename: str = None) ->
                 "-c:v", "libx264", "-preset", "fast", "-crf", "22",
                 "-c:a", "aac", "-b:a", "192k", "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart",
-                "-shortest", "-y", mp4_path
+                "-y", mp4_path
             ]
 
             result = subprocess.run(cmd, capture_output=True,

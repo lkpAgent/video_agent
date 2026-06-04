@@ -14,3 +14,4 @@ python-multipart>=0.0.9 # 文件上传支持
 tavily-python>=0.3.0    # Tavily 搜索（可选）
 selenium>=4.15.0        # Selenium 录制（CentOS 7 兼容）
 webdriver-manager>=4.0  # 自动管理 ChromeDriver
+psycopg2-binary>=2.9    # PostgreSQL
