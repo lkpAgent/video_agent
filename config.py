@@ -80,6 +80,10 @@ class Config:
     SEARCH_MAX_RESULTS: int = int(os.getenv("SEARCH_MAX_RESULTS", "10"))
     SEARCH_REGION: str = os.getenv("SEARCH_REGION", "zh-cn")
 
+    # ======== 数据库 ========
+    # 如果没有配 DATABASE_URL，默认用本地 SQLite
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///data/profiles.db")
+
     # ======== 输出目录 ========
     OUTPUT_DIR: str = os.getenv("OUTPUT_DIR", "./output")
     TEMP_DIR: str = os.getenv("TEMP_DIR", "./output/temp")

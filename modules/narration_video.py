@@ -183,11 +183,16 @@ def generate_narration_html(
 
     # 头像处理
     avatar_b64 = ""
-    if narrator_avatar and os.path.exists(narrator_avatar):
-        with open(narrator_avatar, "rb") as f:
-            ext = Path(narrator_avatar).suffix.lower()
-            mime = "image/png" if ext == ".png" else "image/jpeg"
-            avatar_b64 = f"data:{mime};base64,{base64.b64encode(f.read()).decode()}"
+    if narrator_avatar:
+        # 兼容 URL 路径和文件路径
+        av_path = narrator_avatar
+        if av_path.startswith("/static/"):
+            av_path = str(Path(av_path.lstrip("/")))
+        if os.path.exists(av_path):
+            with open(av_path, "rb") as f:
+                ext = Path(av_path).suffix.lower()
+                mime = "image/png" if ext == ".png" else "image/jpeg"
+                avatar_b64 = f"data:{mime};base64,{base64.b64encode(f.read()).decode()}"
 
     # 背景图
     bg_b64 = ""
@@ -217,7 +222,7 @@ body{{width:{config.VIDEO_WIDTH}px;height:{config.VIDEO_HEIGHT}px;overflow:hidde
   font-family:"Microsoft YaHei","PingFang SC",sans-serif;
   background:#0a0a14;color:#fff}}
 
-#app{{width:100%;height:100%;position:relative;display:flex;flex-direction:column}}
+#app{{width:100%;height:100%;position:relative}}
 
 /* 背景 */
 #bg{{position:absolute;inset:0;background-size:cover;background-position:center;z-index:0}}
@@ -225,23 +230,24 @@ body{{width:{config.VIDEO_WIDTH}px;height:{config.VIDEO_HEIGHT}px;overflow:hidde
   background:linear-gradient(180deg,rgba(10,10,20,0.75) 0%,rgba(10,10,20,0.5) 50%,rgba(10,10,20,0.85) 100%)}}
 
 /* 内容层 */
-#content{{position:relative;z-index:1;flex:1;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;padding:60px 100px}}
+#content{{position:relative;z-index:1;width:100%;height:100%;
+  padding:0 100px}}
 
-/* 标题 */
-#title{{font-size:28px;font-weight:400;letter-spacing:6px;color:rgba(255,255,255,0.6);
-  text-align:center;margin-bottom:60px;text-transform:uppercase}}
+/* 标题：1/4 处 */
+#title{{position:absolute;top:25%;left:50%;transform:translate(-50%,-50%);
+  font-size:38px;font-weight:700;letter-spacing:4px;color:rgba(255,255,255,0.7);
+  text-align:center;width:100%}}
 
-/* 句子区 */
-#sentence-area{{text-align:center;min-height:180px;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;margin-bottom:40px}}
-#sentence{{font-size:42px;font-weight:600;letter-spacing:3px;line-height:1.5;
-  max-width:80%;transition:opacity 0.4s;text-shadow:0 0 40px rgba(255,255,255,0.15)}}
+/* 句子区：1/2 处 */
+#sentence-area{{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  text-align:center;display:flex;flex-direction:column;align-items:center;width:100%}}
+#sentence{{font-size:52px;font-weight:700;letter-spacing:3px;line-height:1.4;
+  max-width:85%;transition:opacity 0.4s;text-shadow:0 0 40px rgba(255,255,255,0.15)}}
 .sentence-enter{{animation:senIn 0.5s ease-out}}
 @keyframes senIn{{from{{opacity:0;transform:translateY(15px)}}to{{opacity:1;transform:translateY(0)}}}}
 
 /* 音波 */
-#waveform{{display:flex;align-items:flex-end;justify-content:center;gap:4px;height:50px;margin-top:30px}}
+#waveform{{display:flex;align-items:flex-end;justify-content:center;gap:4px;height:50px;margin-top:40px}}
 .wave-bar{{width:5px;border-radius:3px;background:linear-gradient(180deg,#6366f1,#a855f7);
   transition:height 0.15s ease;min-height:6px}}
 .wave-bar.active{{animation:wavy 0.6s ease-in-out infinite}}
@@ -249,18 +255,17 @@ body{{width:{config.VIDEO_WIDTH}px;height:{config.VIDEO_HEIGHT}px;overflow:hidde
 .wave-bar:nth-child(even){{animation-delay:0.3s}}
 @keyframes wavy{{0%,100%{{height:10px}}50%{{height:40px}}}}
 
-/* 底部个人信息 */
-#profile{{display:flex;align-items:center;gap:20px;padding:30px 80px;flex-shrink:0;
-  background:rgba(0,0,0,0.3);backdrop-filter:blur(10px);
-  border-top:1px solid rgba(255,255,255,0.08)}}
-#avatar{{width:60px;height:60px;border-radius:50%;overflow:hidden;
-  border:2px solid rgba(255,255,255,0.3);flex-shrink:0}}
+/* 个人信息区：3/4 处 */
+#profile{{position:absolute;top:75%;left:50%;transform:translate(-50%,-50%);
+  display:flex;align-items:center;gap:40px;width:75%;max-width:900px}}
+#profile-left{{display:flex;flex-direction:column;align-items:center;gap:10px;flex-shrink:0}}
+#avatar{{width:100px;height:100px;border-radius:50%;overflow:hidden;
+  border:3px solid rgba(255,255,255,0.4);box-shadow:0 0 30px rgba(99,102,241,0.3)}}
 #avatar img{{width:100%;height:100%;object-fit:cover}}
-#profile-info{{display:flex;flex-direction:column;gap:4px}}
-#profile-name{{font-size:20px;font-weight:600;letter-spacing:2px}}
-#profile-company{{font-size:14px;color:rgba(255,255,255,0.5);letter-spacing:2px;
-  display:flex;align-items:center;gap:10px}}
-#profile-company .dot{{width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,0.3)}}
+#profile-name{{font-size:18px;font-weight:600;letter-spacing:2px;text-align:center;color:rgba(255,255,255,0.9)}}
+#profile-right{{display:flex;flex-direction:column;gap:8px;flex:1}}
+#profile-company{{font-size:22px;font-weight:500;letter-spacing:2px;color:rgba(255,255,255,0.8)}}
+#profile-slogan{{font-size:16px;color:rgba(255,255,255,0.45);letter-spacing:2px}}
 
 /* 进度条 */
 #progress{{position:absolute;top:0;left:0;height:2px;
@@ -279,14 +284,14 @@ body{{width:{config.VIDEO_WIDTH}px;height:{config.VIDEO_HEIGHT}px;overflow:hidde
     <div id="sentence"></div>
     <div id="waveform"></div>
   </div>
-</div>
-
-<div id="profile">
-  <div id="avatar"><img src="{avatar_b64}" alt="avatar"></div>
-  <div id="profile-info">
-    <div id="profile-name">{narrator_name}</div>
-    <div id="profile-company">
-      {company}<span class="dot"></span>{slogan}
+  <div id="profile">
+    <div id="profile-left">
+      <div id="avatar"><img src="{avatar_b64}" alt="avatar"></div>
+      <div id="profile-name">{narrator_name}</div>
+    </div>
+    <div id="profile-right">
+      <div id="profile-company">{company}</div>
+      <div id="profile-slogan">{slogan}</div>
     </div>
   </div>
 </div>

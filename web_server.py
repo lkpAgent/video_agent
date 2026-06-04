@@ -21,7 +21,7 @@ if not (Path(__file__).parent / "modules").exists():
     print(f"Please run from the video-agent project root directory")
     exit(1)
 
-from fastapi import FastAPI, Request, BackgroundTasks
+from fastapi import FastAPI, Request, BackgroundTasks, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -123,55 +123,69 @@ def _generate_science_video(task_id, topic, voice, theme, name, avatar, company,
         config.TEMP_DIR = orig_temp
 
 
-def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, company, slogan):
+def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, company, slogan, voice_type, bg_preset, content):
     try:
         # 独立临时目录
         work_dir = Path(config.TEMP_DIR) / task_id
         work_dir.mkdir(parents=True, exist_ok=True)
         orig_temp = config.TEMP_DIR
         config.TEMP_DIR = str(work_dir)
-        _set_task(task_id, "searching", "🔍 搜索资料...")
+
+        # 动态应用 voice_type
+        orig_voice_type = config.DOUBAO_TTS_VOICE_TYPE
+        if voice_type:
+            config.DOUBAO_TTS_VOICE_TYPE = voice_type
+        if voice:
+            config.TTS_VOICE = voice
         from modules.search import search_web, search_to_context
-        results = search_web(topic)
-        search_ctx = search_to_context(results) if results else ""
 
-        _set_task(task_id, "scripting", "📝 LLM 生成口播文案...")
-        from openai import OpenAI
-        if voice: config.TTS_VOICE = voice
+        # 如果提供了直接内容，跳过搜索和 LLM，直接按行拆分
+        if content and content.strip():
+            lines = [l.strip() for l in content.strip().split("\n") if l.strip()]
+            if not lines:
+                raise ValueError("内容为空")
+            title = topic[:20] if topic else lines[0][:15]
+            text = "。".join(lines)
+            n_sentences = len(lines)
+            console.print(f"   使用直接内容: {len(lines)} 行")
+        else:
+            results = search_web(topic)
+            search_ctx = search_to_context(results) if results else ""
 
-        client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL)
-        prompt = f"""主题：{topic}
+            _set_task(task_id, "scripting", "📝 LLM 生成口播文案...")
+            from openai import OpenAI
+            if voice: config.TTS_VOICE = voice
+
+            client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL)
+            prompt = f"""主题：{topic}
 生成{n_sentences}句口播文案，每句15-40字。
 只返回JSON：{{"title":"标题","text":"句1。句2。句3。句4。句5。"}}"""
-        resp = client.chat.completions.create(
-            model=config.LLM_MODEL, messages=[{"role":"user","content":prompt}],
-            max_tokens=1024, temperature=0.9)
-        raw = resp.choices[0].message.content or ""
-        console.print(f"   [dim]LLM 返回 {len(raw)} 字符[/dim]")
-        if not raw.strip():
-            console.print(f"[red]LLM 空响应，finish_reason: {resp.choices[0].finish_reason}[/red]")
-            raise ValueError("LLM 返回空响应")
-        raw = regex.sub(r'^```(?:json)?\s*', '', raw)
-        raw = regex.sub(r'\s*```$', '', raw)
-        # 从混合文本中提取 JSON
-        json_match = regex.search(r'\{[\s\S]*\}', raw)
-        if json_match:
-            raw = json_match.group()
-        try:
-            data = json.loads(raw)
-            title = data.get("title", topic[:15])
-            text = data.get("text", "")
-        except (json.JSONDecodeError, ValueError):
-            # JSON 解析失败，尝试从文本中提取
-            console.print(f"[yellow]JSON 解析失败，尝试提取纯文本[/yellow]")
-            title = topic[:15]
-            # 按句号拆分当作文案
-            lines = [l.strip() for l in raw.replace("\n", "").split("。") if len(l.strip()) > 3]
-            text = "。".join(lines[:n_sentences])
+            resp = client.chat.completions.create(
+                model=config.LLM_MODEL, messages=[{"role":"user","content":prompt}],
+                max_tokens=1024, temperature=0.9)
+            raw = resp.choices[0].message.content or ""
+            console.print(f"   [dim]LLM 返回 {len(raw)} 字符[/dim]")
+            if not raw.strip():
+                console.print(f"[red]LLM 空响应[/red]")
+                raise ValueError("LLM 返回空响应")
+            raw = regex.sub(r'^```(?:json)?\s*', '', raw)
+            raw = regex.sub(r'\s*```$', '', raw)
+            json_match = regex.search(r'\{[\s\S]*\}', raw)
+            if json_match:
+                raw = json_match.group()
+            try:
+                data = json.loads(raw)
+                title = data.get("title", topic[:15])
+                text = data.get("text", "")
+            except (json.JSONDecodeError, ValueError):
+                console.print(f"[yellow]JSON 解析失败，尝试提取纯文本[/yellow]")
+                title = topic[:15]
+                lines = [l.strip() for l in raw.replace("\n", "").split("。") if len(l.strip()) > 3]
+                text = "。".join(lines[:n_sentences])
+                if not text:
+                    text = raw[:200]
             if not text:
-                text = raw[:200]
-        if not text:
-            raise ValueError("LLM 未生成有效文案")
+                raise ValueError("LLM 未生成有效文案")
         tasks[task_id]["title"] = title
 
         _set_task(task_id, "audio", "🔊 生成配音...")
@@ -179,12 +193,18 @@ def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, 
         sentences = split_sentences(text)
         audio_data = generate_narration_audio(sentences)
 
+        # 背景图：优先用预设
         bg_image = ""
-        if config.IMAGE_GEN_ENABLED:
+        if bg_preset:
+            preset_path = Path("static") / "backgrounds" / bg_preset
+            if preset_path.exists():
+                bg_image = str(preset_path.resolve())
+                console.print(f"   背景: {bg_preset}")
+        if not bg_image and config.IMAGE_GEN_ENABLED:
             _set_task(task_id, "images", "🎨 生成背景图...")
             from modules.image_gen import generate_scene_images
             try:
-                imgs = generate_scene_images({"scenes":[{"image_prompt":"professional studio, cinematic, 16:9"}]})
+                imgs = generate_scene_images({"scenes":[{"image_prompt":"professional studio, cinematic, 9:16"}]})
                 bg_image = imgs[0] if imgs else ""
             except Exception: pass
 
@@ -208,12 +228,75 @@ def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, 
         tasks[task_id].update({"status": "error", "detail": f"❌ {e}"})
     finally:
         config.TEMP_DIR = orig_temp
+        config.DOUBAO_TTS_VOICE_TYPE = orig_voice_type
 
 
 # ====== API ======
 
 @app.get("/video-api/health")
 async def health(): return {"status": "ok"}
+
+# ====== 播主档案 CRUD ======
+
+@app.get("/video-api/profiles")
+async def api_list_profiles():
+    from modules.db import list_profiles
+    return {"profiles": list_profiles()}
+
+@app.post("/video-api/profiles")
+async def api_create_profile(req: Request):
+    from modules.db import save_profile
+    data = await req.json()
+    pid = save_profile(data)
+    return {"id": pid, "ok": True}
+
+@app.put("/video-api/profiles/{pid}")
+async def api_update_profile(pid: str, req: Request):
+    from modules.db import save_profile
+    data = await req.json()
+    data["id"] = pid
+    save_profile(data)
+    return {"ok": True}
+
+@app.delete("/video-api/profiles/{pid}")
+async def api_delete_profile(pid: str):
+    from modules.db import delete_profile
+    delete_profile(pid)
+    return {"ok": True}
+
+@app.post("/video-api/upload/avatar")
+async def api_upload_avatar(file: UploadFile = File(...)):
+    import uuid as _uuid
+    ext = Path(file.filename).suffix or ".png"
+    filename = f"avatar_{_uuid.uuid4().hex[:8]}{ext}"
+    avatar_dir = Path("static") / "avatars"
+    avatar_dir.mkdir(parents=True, exist_ok=True)
+    filepath = avatar_dir / filename
+    with open(filepath, "wb") as f:
+        f.write(await file.read())
+    return {"url": f"/static/avatars/{filename}", "ok": True}
+
+# ====== 语音管理 API ======
+
+@app.get("/video-api/voices")
+async def api_list_voices():
+    from modules.db import list_voices
+    return {"voices": list_voices()}
+
+@app.post("/video-api/voices")
+async def api_create_voice(req: Request):
+    from modules.db import save_voice
+    data = await req.json()
+    save_voice(data)
+    return {"ok": True}
+
+@app.delete("/video-api/voices/{vid}")
+async def api_delete_voice(vid: int):
+    from modules.db import delete_voice
+    delete_voice(vid)
+    return {"ok": True}
+
+# ====== 生成 API ======
 
 @app.post("/video-api/generate/science")
 async def api_science(req: Request, bg: BackgroundTasks):
@@ -234,7 +317,8 @@ async def api_narration(req: Request, bg: BackgroundTasks):
                   "topic": d.get("topic",""), "created": datetime.now().isoformat()}
     bg.add_task(_generate_narration_video, tid,
                 d.get("topic",""), int(d.get("sentences",5)), d.get("voice",""),
-                d.get("name","AI主播"), d.get("avatar",""), d.get("company",""), d.get("slogan",""))
+                d.get("name","AI主播"), d.get("avatar",""), d.get("company",""), d.get("slogan",""),
+                d.get("voice_type",""), d.get("bg_preset",""), d.get("content",""))
     return {"task_id": tid}
 
 @app.get("/video-api/status/{task_id}")
@@ -255,6 +339,7 @@ async def api_videos():
     return {"videos": vids}
 
 app.mount("/output", StaticFiles(directory=str(VIDEO_OUTPUT)), name="output")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8888)

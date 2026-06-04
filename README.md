@@ -31,87 +31,69 @@
 ## 📦 安装
 
 ```bash
-# 1. 克隆 / 进入项目目录
 cd video-agent
-
-# 2. 安装 Python 依赖
 pip install -r requirements.txt
-
-# 3. 安装 Playwright 浏览器（用于视频录制）
 playwright install chromium
-
-# 4. 可选：安装音频处理库（用于合并多个音频片段）
-pip install pydub
-
-# 5. 配置环境变量
-copy .env.example .env
-# 编辑 .env 文件，填入你的 LLM API Key
+cp .env.example .env
+# 编辑 .env，填入 API Key
 ```
 
-## ⚙️ 配置
+## 🚀 启动（Web 界面）
 
-编辑 `.env` 文件：
+### 本地开发
 
-```env
-# 必填：LLM API Key
-LLM_API_KEY=sk-your-api-key-here
-
-# API 地址（支持任何 OpenAI 兼容接口，如 DeepSeek、通义千问等）
-LLM_BASE_URL=https://api.openai.com/v1
-LLM_MODEL=gpt-4o
-
-# 可选：图片生成
-IMAGE_GEN_ENABLED=true
-IMAGE_GEN_MODEL=dall-e-3
-```
-
-### 兼容的 LLM 服务
-
-| 服务 | BASE_URL |
-|------|----------|
-| OpenAI | `https://api.openai.com/v1` |
-| DeepSeek | `https://api.deepseek.com` |
-| 通义千问 | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
-| 智谱 GLM | `https://open.bigmodel.cn/api/paas/v4` |
-| 本地 Ollama | `http://localhost:11434/v1` |
-| SiliconFlow | `https://api.siliconflow.cn/v1` |
-
-## 🚀 使用
-
-### 命令行模式
+开两个终端：
 
 ```bash
-# 基本用法：输入主题，全流程生成视频
+# 终端 1：后端 API
+python web_server.py
+# → http://localhost:8888
+
+# 终端 2：前端页面
+python -m http.server 3000 --directory static
+# → http://localhost:3000
+```
+
+浏览器打开 `http://localhost:3000`。
+
+### 生产部署
+
+后端：
+```bash
+cd /opt/video-agent
+bash start_backend.sh
+```
+
+前端（Nginx）：
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location /video {
+        alias /usr/share/nginx/html/video;
+        index index.html;
+        try_files $uri $uri/ /video/index.html;
+    }
+
+    location /video-api/ {
+        proxy_pass http://127.0.0.1:8888;
+        proxy_read_timeout 600s;
+    }
+
+    location /output/ {
+        proxy_pass http://127.0.0.1:8888;
+    }
+}
+```
+
+访问 `http://your-domain.com/video`。
+
+### 命令行模式（无 Web）
+
+```bash
+# 科普视频
 python main.py "黑洞是如何形成的"
-
-# 不生成 AI 图片（使用纯色背景）
-python main.py "人工智能的起源" --no-images
-
-# 仅生成 HTML 预览，不录制视频
-python main.py "全球变暖的影响" --no-record
-
-# 更换配音音色
-python main.py "中国航天发展史" --voice zh-CN-YunjianNeural
-
-# 更换视频主题风格
-python main.py "量子计算机原理" --theme light
-
-# 自定义输出文件名
-python main.py "5G技术解析" --output 5g_explained
-
-# 仅搜索（调试用）
-python main.py "区块链技术" --search-only
-
-# 添加额外创作指令
-python main.py "深度学习入门" --custom-instruction "面向小学生的科普，用简单比喻"
-```
-
-### 交互模式
-
-```bash
-python main.py
-# 然后输入主题
-```
 
 ### TTS 音色参考
 
@@ -135,23 +117,29 @@ python main.py
 
 ```
 video-agent/
-├── main.py                  # 主入口，编排全流程
+├── web_server.py            # FastAPI 后端
+├── main.py                  # CLI 入口
 ├── config.py                # 配置管理
-├── requirements.txt         # Python 依赖
+├── requirements.txt         # 依赖
 ├── .env.example             # 环境变量模板
+├── nginx.conf               # Nginx 配置示例
+├── start_backend.sh         # 生产启动脚本
+├── static/
+│   ├── index.html           # React 前端
+│   └── backgrounds/         # 预设背景图
 ├── modules/
-│   ├── __init__.py
-│   ├── search.py            # 搜索模块 (DuckDuckGo)
-│   ├── script_generator.py  # 脚本生成模块 (LLM)
-│   ├── tts.py               # 语音合成模块 (Edge TTS)
-│   ├── image_gen.py         # 图片生成模块 (DALL-E)
-│   └── video_builder.py     # 视频构建模块 (HTML + Playwright)
-├── output/                  # 输出目录
-│   ├── temp/                # 临时文件（脚本、音频、HTML）
-│   ├── images/              # AI 生成的图片
-│   └── *.webm               # 最终视频文件
-└── README.md
-```
+│   ├── db.py                # 数据库（PostgreSQL/SQLite）
+│   ├── search.py            # 搜索（DuckDuckGo/Tavily）
+│   ├── script_generator.py  # LLM 脚本生成
+│   ├── tts.py               # 语音合成（Edge/Doubao/ElevenLabs）
+│   ├── image_gen.py         # 图片生成（OpenAI/Doubao）
+│   ├── video_builder.py     # 科普视频 HTML + 录制
+│   ├── narration_video.py   # 口播视频 HTML + 录制
+│   └── selenium_recorder.py # Selenium 录制引擎
+├── tools/
+│   └── clone_voice_doubao.py # 豆包声音克隆工具
+├── data/                    # 数据库文件
+└── output/                  # 生成的视频
 
 ## 🔧 脚本结构说明
 
