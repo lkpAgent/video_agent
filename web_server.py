@@ -296,6 +296,18 @@ async def api_delete_voice(vid: int):
     delete_voice(vid)
     return {"ok": True}
 
+@app.get("/video-api/backgrounds")
+async def api_list_backgrounds():
+    import os
+    bg_dir = Path("static") / "backgrounds"
+    if not bg_dir.exists():
+        return {"backgrounds": []}
+    files = []
+    for f in sorted(bg_dir.iterdir()):
+        if f.suffix.lower() in (".png",".jpg",".jpeg",".svg",".webp"):
+            files.append({"name": f.name, "url": f"/static/backgrounds/{f.name}"})
+    return {"backgrounds": files}
+
 # ====== 生成 API ======
 
 @app.post("/video-api/generate/science")
