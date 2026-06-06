@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 视频生成智能体</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:#0a0a14;color:#ffffff;height:100vh;overflow:hidden}
+#root{display:flex;height:100vh}
+.sidebar{width:280px;background:#0f0f1e;border-right:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;flex-shrink:0}
+.sidebar .logo{padding:20px;font-size:17px;font-weight:700;background:linear-gradient(135deg,#6366f1,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sidebar h2{padding:16px 20px 6px;font-size:11px;font-weight:600;letter-spacing:2px;color:rgba(255,255,255,0.25)}
+.mode-item{padding:10px 20px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:8px;border-left:2px solid transparent;color:rgba(255,255,255,0.65)}
+.mode-item:hover{background:rgba(255,255,255,0.03);color:#fff}
+.mode-item.active{background:rgba(99,102,241,0.08);border-left-color:#6366f1;color:#a5b4fc;font-weight:600}
+.video-list{flex:1;overflow-y:auto;padding:8px 12px}
+.video-card{padding:10px;margin-bottom:6px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:6px;cursor:pointer}
+.video-card:hover{background:rgba(99,102,241,0.06);border-color:rgba(99,102,241,0.2)}
+.video-card .v-title{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.video-card .v-meta{font-size:10px;color:rgba(255,255,255,0.3)}
+.tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:9px;margin-right:4px;font-weight:600}
+.tag-n{background:rgba(99,102,241,0.2);color:#a5b4fc}
+.tag-s{background:rgba(168,85,247,0.2);color:#c4b5fd}
+.main{flex:1 1 0;display:flex;flex-direction:column;overflow-y:auto;padding:30px 40px}
+.main h1{font-size:20px;font-weight:700;margin-bottom:14px}
+.fg{margin-bottom:10px}
+.fg label{display:block;font-size:11px;color:rgba(255,255,255,0.7);margin-bottom:3px}
+.fg input,.fg textarea,.fg select{width:100%;padding:9px 12px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.18);border-radius:7px;color:#ffffff;font-size:13px;outline:none;font-family:inherit}
+.fg input:focus,.fg textarea:focus,.fg select:focus{border-color:#6366f1}
+.fg select option{background:#1a1a2e;color:#fff}
+.fg textarea{resize:vertical;min-height:80px}
+.fr{display:flex;gap:10px}.fr .fg{flex:1}
+.chip{padding:6px 14px;border-radius:20px;font-size:12px;cursor:pointer;border:1px solid rgba(255,255,255,0.15);display:inline-flex;align-items:center;gap:6px;color:rgba(255,255,255,0.7);margin:2px}
+.chip:hover{border-color:rgba(255,255,255,0.3);color:#fff}
+.chip.on{background:rgba(99,102,241,0.15);border-color:#6366f1;color:#a5b4fc;font-weight:600}
+.chip .dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,0.2)}
+.chip.on .dot{background:#6366f1}
+.bg-grid{display:flex;gap:8px;flex-wrap:wrap}
+.bg-opt{width:64px;height:96px;border-radius:6px;cursor:pointer;border:2px solid transparent;overflow:hidden}
+.bg-opt:hover{border-color:rgba(255,255,255,0.25)}
+.bg-opt.on{border-color:#6366f1;box-shadow:0 0 8px rgba(99,102,241,0.25)}
+.bg-opt .fill{width:100%;height:100%}
+.btn{width:100%;padding:12px;background:linear-gradient(135deg,#6366f1,#a855f7);border:none;border-radius:9px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px}
+.btn:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(99,102,241,0.3)}
+.btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+.btn-s{padding:6px 14px;font-size:11px;width:auto;margin:2px;border-radius:6px}
+.status{padding:10px 14px;background:rgba(255,255,255,0.02);border-radius:7px;font-size:12px;margin-top:10px}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,0.2);border-top-color:#6366f1;border-radius:50%;animation:spin 0.8s linear infinite;margin-right:6px;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.preview{flex:1 1 0;background:#0f0f1e;border-left:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;flex-shrink:0}
+.preview h2{padding:18px;font-size:13px;font-weight:600;color:rgba(255,255,255,0.35)}
+.player{flex:1;display:flex;align-items:center;justify-content:center;padding:16px}
+.player video{width:100%;border-radius:6px;max-height:65vh}
+.placeholder{text-align:center;color:rgba(255,255,255,0.15);font-size:13px}
+.placeholder .icon{font-size:40px;margin-bottom:8px;display:block}
+.imgs{padding:8px 18px;border-top:1px solid rgba(255,255,255,0.05);max-height:130px;overflow-y:auto}
+.imgs h3{font-size:10px;color:rgba(255,255,255,0.25);margin-bottom:5px}
+.imgs div{display:flex;flex-wrap:wrap;gap:4px}
+.imgs img{width:56px;height:32px;object-fit:cover;border-radius:3px;border:1px solid rgba(255,255,255,0.08)}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:100}
+.modal{background:#151525;border-radius:12px;padding:24px;width:460px;max-height:80vh;overflow-y:auto;border:1px solid rgba(255,255,255,0.1)}
+.modal h3{font-size:16px;margin-bottom:16px;color:#fff}
+.modal .row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05)}
+.modal .row .info{flex:1}
+.modal .row .name{font-weight:600;font-size:14px}
+.modal .row .meta{font-size:11px;color:rgba(255,255,255,0.35);margin-top:2px}
+.modal .row .acts{display:flex;gap:6px}
+</style>
+<script>const API_BASE=window.location.hostname==='localhost'?'http://localhost:8888':'';</script>
+</head>
+<body><div id="root"></div>
+
+<script type="text/babel">
+const {useState,useEffect}=React;
+
+const BACKGROUNDS=[
+  {name:"科技暗蓝",g:"linear-gradient(135deg,#0a0a1a,#1a1040,#0d1b2a)"},
+  {name:"商务深灰",g:"linear-gradient(135deg,#1a1a1a,#2d2d2d,#1a1a2e)"},
+  {name:"温暖金橙",g:"linear-gradient(135deg,#1a0f0a,#3d1a0a,#4e2d0a)"},
+  {name:"清新翠绿",g:"linear-gradient(135deg,#0a1a0f,#0a2d1a,#0a3d2a)"},
+  {name:"梦幻紫粉",g:"linear-gradient(135deg,#1a0a2e,#2d1a4e,#4e1a6e)"},
+  {name:"纯黑",g:"#0a0a0f"},
+];
+
+const MODES=[
+  {key:"narration",name:"口播视频",icon:"🎤"},
+  {key:"science",name:"科普视频",icon:"🔬"},
+];
+
+const api={profiles:()=>fetch(`${API_BASE}/video-api/profiles`).then(r=>r.json()),
+           saveProfile:p=>fetch(`${API_BASE}/video-api/profiles`+ (p.id?('/'+p.id):''),{method:p.id?'PUT':'POST',headers:{"Content-Type":"application/json"},body:JSON.stringify(p)}),
+           delProfile:id=>fetch(`${API_BASE}/video-api/profiles/`+id,{method:"DELETE"}),
+           voices:()=>fetch(`${API_BASE}/video-api/voices`).then(r=>r.json()),
+           videos:()=>fetch(`${API_BASE}/video-api/videos`).then(r=>r.json()),
+           uploadAvatar:fd=>fetch(`${API_BASE}/video-api/upload/avatar`,{method:"POST",body:fd}).then(r=>r.json()),
+           generate:(type,payload)=>fetch(`${API_BASE}/video-api/generate/`+type,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}).then(r=>r.json()),
+           status:id=>fetch(`${API_BASE}/video-api/status/`+id).then(r=>r.json()),
+};
+
+// ====== Settings Modal ======
+function SettingsModal({profiles,voices,onClose,onRefresh}){
+  const [editing,setEditing]=useState(null);
+  const [name,setName]=useState("");const [company,setCompany]=useState("");
+  const [slogan,setSlogan]=useState("");const [vid,setVid]=useState("");
+  const [avatar,setAvatar]=useState("");
+
+  const beginEdit=(p)=>{
+    setEditing(p?p.id:"new");
+    setName(p?p.name||"":"");setCompany(p?p.company||"":"");
+    setSlogan(p?p.slogan||"":"");setVid(p?p.voice_id||"":"");
+    setAvatar(p?p.avatar||"":"");
+  };
+
+  const save=async()=>{
+    if(!name.trim())return;
+    const d={name,company,slogan,voice_id:vid,avatar};
+    if(editing&&editing!=="new")d.id=editing;
+    await api.saveProfile(d);
+    setEditing(null);onRefresh();
+  };
+
+  const del=async(id)=>{await api.delProfile(id);onRefresh();};
+
+  const vs=Array.isArray(voices)?voices:[];
+  const voicename=(voice_id)=>{const v=vs.find(x=>x.voice_id===voice_id);return v?v.name:"未知";};
+
+  return React.createElement("div",{className:"modal-overlay",onClick:onClose},
+    React.createElement("div",{className:"modal",onClick:e=>e.stopPropagation()},
+      React.createElement("h3",null,"⚙️ 播主设置"),
+      ...profiles.map(p=>{
+        if(!p||!p.id)return null;
+        return React.createElement("div",{key:p.id,className:"row"},
+          React.createElement("div",{className:"info"},
+            React.createElement("div",{className:"name"},(p.name||"?")),
+            React.createElement("div",{className:"meta"},(p.company||"")+" · "+(p.slogan||"")+" · 🎙️"+voicename(p.voice_id))
+          ),
+          React.createElement("div",{className:"acts"},
+            React.createElement("button",{className:"btn-s chip",onClick:()=>beginEdit(p)},"编辑"),
+            React.createElement("button",{className:"btn-s chip",onClick:()=>del(p.id),style:{color:"#ef4444"}},"删除")
+          )
+        );
+      }),
+      editing!==null?React.createElement("div",{style:{marginTop:12}},
+        React.createElement("div",{className:"fg"},React.createElement("label",null,"名称"),React.createElement("input",{value:name,onChange:e=>setName(e.target.value)})),
+        React.createElement("div",{className:"fr"},
+          React.createElement("div",{className:"fg"},React.createElement("label",null,"公司"),React.createElement("input",{value:company,onChange:e=>setCompany(e.target.value)})),
+          React.createElement("div",{className:"fg"},React.createElement("label",null,"Slogan"),React.createElement("input",{value:slogan,onChange:e=>setSlogan(e.target.value)}))
+        ),
+        React.createElement("div",{className:"fg"},React.createElement("label",null,"配音"),
+          React.createElement("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
+            ...vs.map(v=>React.createElement("div",{key:v.voice_id,className:"chip"+(vid===v.voice_id?" on":""),onClick:()=>setVid(v.voice_id)},React.createElement("span",{className:"dot"}),v.name))
+          )
+        ),
+        React.createElement("div",{className:"fg"},React.createElement("label",null,"头像"),
+          React.createElement("div",{style:{display:"flex",alignItems:"center",gap:10}},
+            React.createElement("input",{type:"file",accept:"image/*",onChange:async e=>{const f=e.target.files[0];if(!f)return;const d=await api.uploadAvatar(new FormData());(new FormData()).append("file",f);const r=await fetch(`${API_BASE}/video-api/upload/avatar`,{method:"POST",body:new FormData()});e.target.form&&e.target.form.reset();}}),
+            avatar?React.createElement("img",{src:API_BASE+avatar,style:{width:32,height:32,borderRadius:4,objectFit:"cover"}}):null
+          )
+        ),
+        React.createElement("div",{style:{display:"flex",gap:8,marginTop:12}},
+          React.createElement("button",{className:"btn btn-s",onClick:save},"💾 保存"),
+          React.createElement("button",{className:"btn btn-s",onClick:()=>setEditing(null),style:{background:"rgba(255,255,255,0.1)"}},"取消")
+        )
+      ):React.createElement("button",{className:"btn",onClick:()=>beginEdit(null)},"➕ 新建播主"),
+      React.createElement("button",{className:"btn",style:{marginTop:8,background:"rgba(255,255,255,0.08)"},onClick:onClose},"关闭")
+    )
+  );
+}
+
+// ====== App ======
+function App(){
+  const [mode,setMode]=useState("narration");
+  const [profiles,setProfiles]=useState([]);const [voices,setVoices]=useState([]);
+  const [videos,setVideos]=useState([]);const [showSettings,setShowSettings]=useState(false);
+  const [generating,setGenerating]=useState(false);const [status,setStatus]=useState("");
+  const [video,setVideo]=useState(null);const [title,setTitle]=useState("");const [images,setImages]=useState([]);
+
+  const refresh=async()=>{
+    try{setProfiles((await api.profiles()).profiles||[])}catch(e){}
+    try{setVoices((await api.voices()).voices||[])}catch(e){}
+    try{setVideos((await api.videos()).videos||[])}catch(e){}
+  };
+  useEffect(()=>{refresh()},[]);
+
+  const generate=async(payload)=>{
+    setGenerating(true);setStatus("启动中...");setImages([]);
+    try{
+      const d=await api.generate(payload.type==="narration"?"narration":"science",payload);
+      const id=setInterval(async()=>{
+        const st=await api.status(d.task_id);
+        setStatus(st.detail||st.status);if(st.images)setImages(st.images);if(st.title)setTitle(st.title);
+        if(st.status==="done"){clearInterval(id);setGenerating(false);setVideo(st.video);setStatus("✅完成");refresh();}
+        else if(st.status==="error"){clearInterval(id);setGenerating(false);setStatus("❌"+(st.error||""));}
+      },1500);
+    }catch(e){setGenerating(false);setStatus("❌"+e.message)}
+  };
+
+  const play=(v)=>{setVideo(v.name);setTitle(v.name.replace(".mp4",""));};
+
+  return React.createElement(React.Fragment,null,
+    // Sidebar
+    React.createElement("div",{className:"sidebar"},
+      React.createElement("div",{className:"logo"},"🎬 AI Video Agent"),
+      React.createElement("h2",null,"视频模式"),
+      ...MODES.map(m=>React.createElement("div",{key:m.key,className:"mode-item"+(mode===m.key?" active":""),onClick:()=>setMode(m.key)},React.createElement("span",null,m.icon),m.name)),
+      React.createElement("h2",null,"📼 视频列表"),
+      React.createElement("div",{className:"video-list"},
+        ...videos.map(v=>React.createElement("div",{key:v.name,className:"video-card",onClick:()=>play(v)},
+          React.createElement("div",{className:"v-title"},React.createElement("span",{className:"tag "+(v.type==="narration"?"tag-n":"tag-s")},v.type==="narration"?"口播":"科普"),v.name.replace(".mp4","")),
+          React.createElement("div",{className:"v-meta"},new Date(v.time).toLocaleDateString()+" · "+(v.size/1024/1024).toFixed(1)+"MB")
+        ))
+      ),
+      React.createElement("div",{style:{padding:"12px 20px",borderTop:"1px solid rgba(255,255,255,0.06)",fontSize:11,color:"rgba(255,255,255,0.3)",cursor:"pointer"},onClick:()=>setShowSettings(true)},"⚙️ 播主设置"),
+      React.createElement("div",{style:{padding:"0 20px 12px",fontSize:11,color:"rgba(255,255,255,0.3)",cursor:"pointer"},onClick:refresh},"🔄 刷新列表"),
+    ),
+    // Main
+    React.createElement("div",{className:"main"},
+      React.createElement("h1",null,MODES.find(m=>m.key===mode)?.icon+" "+MODES.find(m=>m.key===mode)?.name),
+      mode==="narration"?React.createElement(NarrationForm,{profiles,onGenerate:generate,generating}):
+      React.createElement(ScienceForm,{profiles,onGenerate:generate,generating}),
+      generating?React.createElement("div",{className:"status"},React.createElement("span",{className:"spin"}),status):null
+    ),
+    // Preview
+    React.createElement("div",{className:"preview"},
+      React.createElement("h2",null,"▶️ 预览"),
+      React.createElement("div",{className:"player"},
+        video?React.createElement("video",{controls:true,autoPlay:true,src:`${API_BASE}/output/${video}`}):
+        React.createElement("div",{className:"placeholder"},React.createElement("span",{className:"icon"},"🎥"),"选择视频播放")
+      ),
+      images.length>0?React.createElement("div",{className:"imgs"},React.createElement("h3",null,"🖼️ 图片"),React.createElement("div",null,...images.map((u,i)=>React.createElement("img",{key:i,src:API_BASE+u})))):null,
+      React.createElement("div",{style:{padding:"10px 18px",fontSize:11,color:"rgba(255,255,255,0.25)"}},status+(title?" · "+title:""))
+    ),
+    showSettings?React.createElement(SettingsModal,{profiles,voices,onClose:()=>setShowSettings(false),onRefresh:refresh}):null
+  );
+}
+
+// ====== Narration Form ======
+function NarrationForm({profiles,onGenerate,generating}){
+  const [topic,setTopic]=useState("");const [content,setContent]=useState("");
+  const [pid,setPid]=useState("");
+  const [bg,setBg]=useState("");const [bgs,setBgs]=useState([]);
+  const [useContent,setUseContent]=useState(true);
+  const p=profiles.find(x=>x.id===pid)||{};
+
+  useEffect(()=>{fetch(`${API_BASE}/video-api/backgrounds`).then(r=>r.json()).then(d=>{setBgs(d.backgrounds||[]);if(d.backgrounds&&d.backgrounds[0])setBg(d.backgrounds[0].name)})},[]);
+
+  const go=()=>{
+    if(!pid||!p.id)return alert("请选择播主");
+    if(!topic.trim())return alert("请输入主题");
+    const payload={type:"narration",topic,name:p.name||"",company:p.company||"",slogan:p.slogan||"",avatar:p.avatar||"",voice_type:p.voice_id||"",bg_preset:bg};
+    if(useContent&&content.trim()){payload.content=content.trim();payload.sentences=0;}
+    else payload.sentences=5;
+    onGenerate(payload);
+  };
+
+  return React.createElement("div",null,
+    React.createElement("div",{className:"fg"},React.createElement("label",null,"👤 播主"),
+      React.createElement("div",{style:{display:"flex",gap:6}},
+        ...profiles.map(x=>React.createElement("div",{key:x.id,className:"chip"+(pid===x.id?" on":""),onClick:()=>setPid(x.id)},React.createElement("span",{className:"dot"}),x.name))
+      )
+    ),
+    React.createElement("div",{className:"fg"},React.createElement("label",null,"🎯 主题"),React.createElement("input",{value:topic,onChange:e=>setTopic(e.target.value),placeholder:"例如：时间管理的三个秘诀"})),
+    React.createElement("div",{className:"fg"},React.createElement("label",null,"📝 口播内容（每行一句）"),React.createElement("textarea",{value:content,onChange:e=>setContent(e.target.value),placeholder:"每行一句话，按行拆分为每P画面...",rows:4})),
+    React.createElement("div",{className:"fg"},React.createElement("label",null,"🖼️ 背景"),
+      React.createElement("div",{className:"bg-grid"},
+        ...bgs.map(b=>React.createElement("div",{key:b.name,className:"bg-opt"+(bg===b.name?" on":""),onClick:()=>setBg(b.name),title:b.name},React.createElement("img",{src:API_BASE+b.url,style:{width:"100%",height:"100%",objectFit:"cover"}})))
+      )
+    ),
+    React.createElement("button",{className:"btn",onClick:go,disabled:generating},generating?"生成中...":"🚀 生成视频")
+  );
+}
+
+// ====== Science Form ======
+function ScienceForm({profiles,onGenerate,generating}){
+  const [topic,setTopic]=useState("");const [theme,setTheme]=useState("dark");
+  const [pid,setPid]=useState("");
+  const p=profiles.find(x=>x.id===pid)||{};
+
+  const go=()=>{
+    if(!pid||!p.id)return alert("请选择播主");
+    if(!topic.trim())return alert("请输入主题");
+    onGenerate({type:"science",topic,theme,name:p.name||"",company:p.company||"",slogan:p.slogan||"",avatar:p.avatar||"",voice_type:p.voice_id||""});
+  };
+
+  return React.createElement("div",null,
+    React.createElement("div",{className:"fg"},React.createElement("label",null,"👤 播主"),
+      React.createElement("div",{style:{display:"flex",gap:6}},
+        ...profiles.map(x=>React.createElement("div",{key:x.id,className:"chip"+(pid===x.id?" on":""),onClick:()=>setPid(x.id)},React.createElement("span",{className:"dot"}),x.name))
+      )
+    ),
+    React.createElement("div",{className:"fg"},React.createElement("label",null,"🔬 主题"),React.createElement("input",{value:topic,onChange:e=>setTopic(e.target.value),placeholder:"例如：黑洞是如何形成的"})),
+    React.createElement("div",{className:"fg"},React.createElement("label",null,"🎨 风格"),React.createElement("select",{value:theme,onChange:e=>setTheme(e.target.value)},React.createElement("option",{value:"dark"},"🌙暗色"),React.createElement("option",{value:"light"},"☀️亮色"),React.createElement("option",{value:"warm"},"🔥暖色"))),
+    React.createElement("button",{className:"btn",onClick:go,disabled:generating},generating?"生成中...":"🚀 生成视频")
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+</script>
+</body>
+</html>

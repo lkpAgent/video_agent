@@ -18,6 +18,7 @@ output/
 *.png
 *.jpg
 *.html
+!static/index.html
 
 # IDE
 .vscode/

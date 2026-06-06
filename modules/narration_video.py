@@ -7,11 +7,11 @@
 ├──────────────────────────────┤
 │                              │
 │    "当前正在念的句子..."     │
-│    ▁▂▃▄▅▆▇ 音波动画         │
 │                              │
 ├──────────────────────────────┤
 │  [头像]  用户名              │
-│           公司 · Slogan      │
+│           Slogan             │
+│           ▁▂▃▄▅▆▇ 音波动画  │
 └──────────────────────────────┘
 """
 
@@ -250,9 +250,9 @@ body{{width:{config.VIDEO_WIDTH}px;height:{config.VIDEO_HEIGHT}px;overflow:hidde
 #content{{position:relative;z-index:1;width:100%;height:100%;
   padding:0 100px}}
 
-/* 标题：1/4 处 */
-#title{{position:absolute;top:25%;left:50%;transform:translate(-50%,-50%);
-  font-size:38px;font-weight:700;letter-spacing:4px;color:rgba(255,255,255,0.7);
+/* 标题：向页面中部靠拢 */
+#title{{position:absolute;top:29%;left:50%;transform:translate(-50%,-50%);
+  font-size:48px;font-weight:700;letter-spacing:4px;color:rgba(255,255,255,0.7);
   text-align:center;width:100%}}
 
 /* 句子区：1/2 处 */
@@ -264,7 +264,7 @@ body{{width:{config.VIDEO_WIDTH}px;height:{config.VIDEO_HEIGHT}px;overflow:hidde
 @keyframes senIn{{from{{opacity:0;transform:translateY(15px)}}to{{opacity:1;transform:translateY(0)}}}}
 
 /* 音波 */
-#waveform{{display:flex;align-items:flex-end;justify-content:center;gap:4px;height:50px;margin-top:40px}}
+#waveform{{display:flex;align-items:flex-end;justify-content:flex-start;gap:4px;height:50px;margin-top:16px}}
 .wave-bar{{width:5px;border-radius:3px;background:linear-gradient(180deg,#6366f1,#a855f7);
   transition:height 0.15s ease;min-height:6px}}
 .wave-bar.active{{animation:wavy 0.6s ease-in-out infinite}}
@@ -272,17 +272,16 @@ body{{width:{config.VIDEO_WIDTH}px;height:{config.VIDEO_HEIGHT}px;overflow:hidde
 .wave-bar:nth-child(even){{animation-delay:0.3s}}
 @keyframes wavy{{0%,100%{{height:10px}}50%{{height:40px}}}}
 
-/* 个人信息区：3/4 处 */
-#profile{{position:absolute;top:75%;left:50%;transform:translate(-50%,-50%);
-  display:flex;align-items:center;gap:40px;width:75%;max-width:900px}}
+/* 个人信息区：向页面中部靠拢 */
+#profile{{position:absolute;top:70%;left:50%;transform:translate(-50%,-50%);
+  display:flex;align-items:center;justify-content:center;gap:40px;width:100%;text-align:center}}
 #profile-left{{display:flex;flex-direction:column;align-items:center;gap:10px;flex-shrink:0}}
 #avatar{{width:100px;height:100px;border-radius:50%;overflow:hidden;
   border:3px solid rgba(255,255,255,0.4);box-shadow:0 0 30px rgba(99,102,241,0.3)}}
 #avatar img{{width:100%;height:100%;object-fit:cover}}
-#profile-name{{font-size:18px;font-weight:600;letter-spacing:2px;text-align:center;color:rgba(255,255,255,0.9)}}
-#profile-right{{display:flex;flex-direction:column;gap:8px;flex:1}}
-#profile-company{{font-size:22px;font-weight:500;letter-spacing:2px;color:rgba(255,255,255,0.8)}}
-#profile-slogan{{font-size:16px;color:rgba(255,255,255,0.45);letter-spacing:2px}}
+#profile-name{{font-size:26px;font-weight:600;letter-spacing:2px;text-align:center;color:rgba(255,255,255,0.9)}}
+#profile-right{{display:flex;flex-direction:column;align-items:center;gap:8px;flex:none}}
+#profile-slogan{{font-size:28px;font-weight:500;color:rgba(255,255,255,0.82);letter-spacing:2px}}
 
 /* 进度条 */
 #progress{{position:absolute;top:0;left:0;height:2px;
@@ -299,7 +298,6 @@ body{{width:{config.VIDEO_WIDTH}px;height:{config.VIDEO_HEIGHT}px;overflow:hidde
   <div id="title">{title}</div>
   <div id="sentence-area">
     <div id="sentence"></div>
-    <div id="waveform"></div>
   </div>
   <div id="profile">
     <div id="profile-left">
@@ -307,8 +305,8 @@ body{{width:{config.VIDEO_WIDTH}px;height:{config.VIDEO_HEIGHT}px;overflow:hidde
       <div id="profile-name">{narrator_name}</div>
     </div>
     <div id="profile-right">
-      <div id="profile-company">{company}</div>
       <div id="profile-slogan">{slogan}</div>
+      <div id="waveform"></div>
     </div>
   </div>
 </div>
