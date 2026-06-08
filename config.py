@@ -62,8 +62,10 @@ class Config:
     ELEVENLABS_MODEL: str = os.getenv("ELEVENLABS_MODEL", "eleven_multilingual_v2")
 
     # ======== 视频配置 ========
-    # 录制引擎: playwright(默认) / selenium(CentOS7兼容)
-    RECORD_ENGINE: str = os.getenv("RECORD_ENGINE", "playwright")
+    # 录制引擎: selenium(默认，Firefox) / playwright
+    RECORD_ENGINE: str = os.getenv("RECORD_ENGINE", "selenium")
+    RECORD_BROWSER: str = os.getenv("RECORD_BROWSER", "firefox")
+    GECKODRIVER_PATH: str = os.getenv("GECKODRIVER_PATH", "./tools/geckodriver.exe" if os.name == "nt" else "")
     VIDEO_OUTPUT_DIR: str = os.getenv("VIDEO_OUTPUT_DIR", "./output")
     # 视频分辨率（竖屏 1080x1920）
     VIDEO_WIDTH: int = int(os.getenv("VIDEO_WIDTH", "1080"))

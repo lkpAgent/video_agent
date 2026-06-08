@@ -50,7 +50,8 @@ python web_server.py
 # → http://localhost:8888
 
 # 终端 2：前端页面
-python -m http.server 3000 --directory static
+cd static
+python -m http.server 3000 
 # → http://localhost:3000
 ```
 

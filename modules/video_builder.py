@@ -436,11 +436,8 @@ def convert_webm_to_mp4(webm_path: str, mp4_path: str = None, audio_path: str = 
 
 
 def _record_video(html_path: str, script: dict, audio_path: str, output_filename: str = None) -> str:
-    """录制视频（支持 Playwright 或 Selenium），Windows 自动回退 Playwright"""
+    """录制视频（支持 Playwright 或 Selenium）"""
     engine = config.RECORD_ENGINE.lower()
-    if engine == "selenium" and not shutil.which("Xvfb"):
-        console.print("[yellow]Windows 不支持 Selenium，回退 Playwright[/yellow]")
-        engine = "playwright"
     if engine == "selenium":
         return _record_with_selenium(html_path, script, audio_path, output_filename)
     return _record_with_playwright(html_path, script, audio_path, output_filename)
@@ -542,4 +539,3 @@ def _record_with_playwright(html_path: str, script: dict, audio_path: str, outpu
 
     console.print("[red]未找到录制的视频文件[/red]")
     return html_path
-

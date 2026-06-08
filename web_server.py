@@ -144,7 +144,7 @@ def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, 
             lines = [l.strip() for l in content.strip().split("\n") if l.strip()]
             if not lines:
                 raise ValueError("内容为空")
-            title = topic[:20] if topic else lines[0][:15]
+            title = topic.strip() if topic and topic.strip() else lines[0]
             text = "。".join(lines)
             n_sentences = len(lines)
             console.print(f"   使用直接内容: {len(lines)} 行")
@@ -179,7 +179,7 @@ def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, 
                 text = data.get("text", "")
             except (json.JSONDecodeError, ValueError):
                 console.print(f"[yellow]JSON 解析失败，尝试提取纯文本[/yellow]")
-                title = topic[:15]
+                title = topic.strip()
                 lines = [l.strip() for l in raw.replace("\n", "").split("。") if len(l.strip()) > 3]
                 text = "。".join(lines[:n_sentences])
                 if not text:

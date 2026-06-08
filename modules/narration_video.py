@@ -95,7 +95,7 @@ def generate_narration_audio(sentences: list[str]) -> list[dict]:
         if dur <= 0:
             dur = len(s) / 4.0
             console.print(f"   [yellow]ffprobe 失败，用字数估算: {dur:.1f}s[/yellow]")
-        dur = max(1.5, round(dur, 1))
+        dur = max(1.5, round(dur, 3))
 
         audio_data.append({"path": path, "text": s, "duration": dur})
         audio_files.append(path)
@@ -104,23 +104,15 @@ def generate_narration_audio(sentences: list[str]) -> list[dict]:
     full_path = os.path.join(audio_dir, "narration_full.mp3")
     _merge_narration_audio(audio_files, full_path)
 
-    # 用完整合并音频的真实时长分配每句时间
+    # 完整合并音频仅用于校验总时长。页面切换必须使用每句音频的实测时长，
+    # 不能按字数比例重新分配，否则语速、停顿差异会造成逐页累计误差。
     real_total = _get_mp3_duration(full_path)
     if real_total <= 0:
         real_total = sum(d["duration"] for d in audio_data)
-    total_chars = sum(len(s) for s in sentences)
-
-    # 按字数比例重新分配时长
-    allocated = 0.0
-    for i, d in enumerate(audio_data):
-        ratio = len(d["text"]) / max(total_chars, 1)
-        if i == len(audio_data) - 1:
-            dur = round(real_total - allocated, 1)
-        else:
-            dur = max(1.5, round(real_total * ratio, 1))
-            allocated += dur
-        d["duration"] = dur
-        console.print(f"   [{i+1}/{len(sentences)}] {dur:.1f}s | {d['text'][:30]}...")
+    measured_total = sum(d["duration"] for d in audio_data)
+    console.print(
+        f"   [dim]逐句实测合计: {measured_total:.3f}s，合并音频: {real_total:.3f}s[/dim]"
+    )
 
     console.print(f"✅ [green]配音完成，真实总时长 {real_total:.1f} 秒[/green]\n")
     return audio_data
@@ -253,7 +245,8 @@ body{{width:{config.VIDEO_WIDTH}px;height:{config.VIDEO_HEIGHT}px;overflow:hidde
 /* 标题：向页面中部靠拢 */
 #title{{position:absolute;top:29%;left:50%;transform:translate(-50%,-50%);
   font-size:48px;font-weight:700;letter-spacing:4px;color:rgba(255,255,255,0.7);
-  text-align:center;width:100%}}
+  text-align:center;width:calc(100% - 200px);max-width:880px;line-height:1.35;
+  white-space:normal;overflow-wrap:anywhere;word-break:break-word}}
 
 /* 句子区：1/2 处 */
 #sentence-area{{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
@@ -261,6 +254,7 @@ body{{width:{config.VIDEO_WIDTH}px;height:{config.VIDEO_HEIGHT}px;overflow:hidde
 #sentence{{font-size:52px;font-weight:700;letter-spacing:3px;line-height:1.4;
   max-width:85%;transition:opacity 0.4s;text-shadow:0 0 40px rgba(255,255,255,0.15)}}
 .sentence-enter{{animation:senIn 0.5s ease-out}}
+.deterministic-render #sentence{{animation:none!important;opacity:1!important;transform:none!important}}
 @keyframes senIn{{from{{opacity:0;transform:translateY(15px)}}to{{opacity:1;transform:translateY(0)}}}}
 
 /* 音波 */
@@ -316,7 +310,11 @@ body{{width:{config.VIDEO_WIDTH}px;height:{config.VIDEO_HEIGHT}px;overflow:hidde
 const data={audio_json};
 const total={total};
 const barCount=50;
+const visualSwitchDelay=0.35;
 window.__READY=false;
+window.__timelineData=data;
+window.__timelineTotal=total;
+window.__visualSwitchDelay=visualSwitchDelay;
 
 // 生成音波条
 const wf=document.getElementById('waveform');
@@ -335,6 +333,7 @@ data.forEach(d=>{{times.push(acc);acc+=d.duration}});
 const senEl=document.getElementById('sentence');
 const bars=document.querySelectorAll('.wave-bar');
 const prog=document.getElementById('progress');
+const timelineTimers=[];
 
 function showSentence(idx){{
   if(idx>=data.length)return;
@@ -357,19 +356,66 @@ function stopWave(){{
 // 初始显示第一句
 showSentence(0);
 
-// 等 Selenium 设 __READY=true 再启动切换
+// 等录制器设 __READY=true 再启动切换
+let timelineStarted=false;
+function startTimeline(){{
+  if(timelineStarted)return;
+  timelineStarted=true;
+  data.forEach((d,i)=>{{
+    timelineTimers.push(setTimeout(()=>showSentence(i),(times[i]+(i===0?0:visualSwitchDelay))*1000));
+    timelineTimers.push(setTimeout(()=>stopWave(),(times[i]+d.duration)*1000-200));
+  }});
+  timelineTimers.push(setTimeout(()=>prog.style.width='100%',total*1000));
+}}
+
+window.__stopTimeline=()=>{{
+  timelineTimers.forEach(clearTimeout);
+  timelineTimers.length=0;
+  clearInterval(_waitReady);
+  timelineStarted=true;
+  window.__READY=false;
+}};
+
+window.__renderAt=(seconds)=>{{
+  document.body.classList.add('deterministic-render');
+  let idx=0;
+  for(let i=1;i<times.length;i++){{
+    if(seconds>=times[i]+visualSwitchDelay)idx=i;
+    else break;
+  }}
+  showSentence(idx);
+  return idx;
+}};
+
+window.__renderSentence=(idx)=>{{
+  document.body.classList.add('deterministic-render');
+  window._curScene=idx;
+  senEl.textContent=data[idx].text;
+  senEl.classList.remove('sentence-enter');
+  senEl.style.animation='none';
+  senEl.style.opacity='1';
+  senEl.style.transform='none';
+  prog.style.width=((times[idx]/total)*100)+'%';
+  return senEl.textContent;
+}};
+
+window.__renderWave=(phase)=>{{
+  bars.forEach((bar,i)=>{{
+    bar.style.animation='none';
+    const wave=Math.sin(phase+i*0.72);
+    const pulse=Math.sin(phase*1.7+i*0.31);
+    bar.style.height=(10+Math.abs(wave)*22+Math.abs(pulse)*8)+'px';
+  }});
+}};
+
 var _waitReady=setInterval(()=>{{
   if(window.__READY){{
     clearInterval(_waitReady);
-    data.forEach((d,i)=>{{
-      setTimeout(()=>showSentence(i),times[i]*1000);
-      setTimeout(()=>stopWave(),(times[i]+d.duration)*1000-200);
-    }});
-    setTimeout(()=>prog.style.width='100%',total*1000);
+    startTimeline();
   }}
 }},200);
-// 兜底：2 秒后还没收到标志就自动启动（防止录制器 bug 导致永远卡住）
-setTimeout(()=>{{if(!window.__READY)window.__READY=true;}},2000);
+// 仅用于手动打开 HTML 预览；服务器录制器会更早设置 __READY。
+setTimeout(()=>{{if(!window.__READY){{window.__READY=true;startTimeline();}}}},15000);
 </script>
 </body>
 </html>'''
@@ -383,10 +429,6 @@ setTimeout(()=>{{if(!window.__READY)window.__READY=true;}},2000);
 def record_narration_video(html_path: str, output_filename: str = None) -> str:
     """录制口播视频（自动选择引擎）"""
     engine = config.RECORD_ENGINE.lower()
-    # Windows 没有 Xvfb，强制 Playwright
-    if engine == "selenium" and not shutil.which("Xvfb"):
-        console.print("[yellow]Windows 不支持 Selenium 录制，回退 Playwright[/yellow]")
-        engine = "playwright"
     if engine == "selenium":
         return _record_narration_selenium(html_path, output_filename)
     else:
@@ -405,9 +447,10 @@ def _record_narration_selenium(html_path: str, output_filename: str = None) -> s
     os.makedirs(video_dir, exist_ok=True)
     video_path = os.path.join(video_dir, output_filename)
 
-    total_duration = 30
+    total_duration = _read_narration_total_duration(html_path)
     console.print("📹 [cyan]Selenium 录制口播视频...[/cyan]")
-    webm_result = record_with_selenium(html_path, video_dir, total_duration + 5)
+    console.print(f"⏱️  预计时长: {total_duration:.1f} 秒")
+    webm_result = record_with_selenium(html_path, video_dir, total_duration + 3)
     if not webm_result:
         return html_path
 
@@ -453,6 +496,19 @@ def _record_narration_selenium(html_path: str, output_filename: str = None) -> s
         console.print("[yellow]⚠️ 未找到逐句音频文件，生成无声视频[/yellow]")
 
     return str(webm_result)
+
+
+def _read_narration_total_duration(html_path: str) -> float:
+    """从生成的口播 HTML 中读取真实总时长，供服务器 Selenium 录制使用。"""
+    try:
+        html = Path(html_path).read_text(encoding="utf-8")
+        match = re.search(r"const total=([0-9]+(?:\.[0-9]+)?);", html)
+        if match:
+            return float(match.group(1))
+    except (OSError, ValueError):
+        pass
+    console.print("[yellow]⚠️ 无法读取口播真实时长，回退为 30 秒[/yellow]")
+    return 30.0
 
 
 def _record_narration_playwright(html_path: str, output_filename: str = None) -> str:
