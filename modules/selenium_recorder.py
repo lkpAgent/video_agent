@@ -229,7 +229,7 @@ def _create_firefox_driver(headless: bool):
     except Exception as exc:
         detail = f" Firefox: {firefox_binary or '未找到'}；geckodriver: {geckodriver or '未找到'}。"
         raise RuntimeError(
-            "无法启动 Firefox Selenium。" + detail
+            "无法启动 Firefox Selenium。" + detail + f" 原因: {exc}"
         ) from exc
 
 
@@ -272,12 +272,20 @@ def _find_geckodriver() -> str:
     import shutil
 
     configured = config.GECKODRIVER_PATH.strip()
+    driver_name = "geckodriver.exe" if os.name == "nt" else "geckodriver"
     candidates = [
         str(Path(configured).resolve()) if configured else "",
-        str((Path(__file__).resolve().parent.parent / "tools" / "geckodriver.exe").resolve()),
+        str((Path(__file__).resolve().parent.parent / "tools" / driver_name).resolve()),
         shutil.which("geckodriver") or "",
     ]
-    return next((p for p in candidates if p and os.path.isfile(p)), "")
+    for candidate in candidates:
+        if not candidate or not os.path.isfile(candidate):
+            continue
+        if os.name != "nt":
+            if candidate.lower().endswith(".exe") or not os.access(candidate, os.X_OK):
+                continue
+        return candidate
+    return ""
 
 
 def _set_viewport_size(driver, width: int, height: int):
