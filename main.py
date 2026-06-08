@@ -145,7 +145,7 @@ def _run_narration_mode(args):
                 "type": "narration",
                 "title": title,
                 "topic": args.topic or title,
-                "content": text,
+                "content": "\n".join(sentences),
                 "narrator_name": args.name,
                 "narrator_avatar": args.avatar or "",
                 "company": args.company,

@@ -78,6 +78,12 @@ body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:#0a0a14;c
 <script type="text/babel">
 const {useState,useEffect}=React;
 
+const formatNarrationContent=(content)=>{
+  if(!content)return "";
+  if(content.includes("\n"))return content;
+  return content.replace(/([。！？!?]+)(?=\S)/g,"$1\n");
+};
+
 const BACKGROUNDS=[
   {name:"科技暗蓝",g:"linear-gradient(135deg,#0a0a1a,#1a1040,#0d1b2a)"},
   {name:"商务深灰",g:"linear-gradient(135deg,#1a1a1a,#2d2d2d,#1a1a2e)"},
@@ -241,7 +247,7 @@ function App(){
       selectedVideo?React.createElement("div",{className:"video-details"},
         React.createElement("div",null,React.createElement("strong",null,"播主："),selectedVideo.narrator_name||"未记录"),
         React.createElement("div",null,React.createElement("strong",null,"背景："),selectedVideo.background||selectedVideo.theme||"未记录"),
-        selectedVideo.content?React.createElement("div",{className:"copy"},selectedVideo.content):null
+        selectedVideo.content?React.createElement("div",{className:"copy"},selectedVideo.type==="narration"?formatNarrationContent(selectedVideo.content):selectedVideo.content):null
       ):null,
       React.createElement("div",{style:{padding:"10px 18px",fontSize:11,color:"rgba(255,255,255,0.25)"}},status+(title?" · "+title:""))
     ),
@@ -261,7 +267,7 @@ function NarrationForm({profiles,onGenerate,generating,selectedVideo}){
   useEffect(()=>{
     if(!selectedVideo||selectedVideo.type!=="narration")return;
     setTopic(selectedVideo.topic||selectedVideo.title||"");
-    setContent(selectedVideo.content||"");
+    setContent(formatNarrationContent(selectedVideo.content||""));
     setPid(selectedVideo.profile_id||"");
     setBg(selectedVideo.background||"");
     setUseContent(true);
