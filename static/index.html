@@ -60,6 +60,8 @@ body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:#0a0a14;c
 .imgs h3{font-size:10px;color:rgba(255,255,255,0.25);margin-bottom:5px}
 .imgs div{display:flex;flex-wrap:wrap;gap:4px}
 .imgs img{width:56px;height:32px;object-fit:cover;border-radius:3px;border:1px solid rgba(255,255,255,0.08)}
+.video-details{padding:12px 18px;border-top:1px solid rgba(255,255,255,0.05);font-size:11px;color:rgba(255,255,255,0.55);max-height:220px;overflow-y:auto}
+.video-details strong{color:#a5b4fc}.video-details .copy{margin-top:8px;white-space:pre-wrap;line-height:1.65;color:rgba(255,255,255,0.7)}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:100}
 .modal{background:#151525;border-radius:12px;padding:24px;width:460px;max-height:80vh;overflow-y:auto;border:1px solid rgba(255,255,255,0.1)}
 .modal h3{font-size:16px;margin-bottom:16px;color:#fff}
@@ -177,6 +179,7 @@ function App(){
   const [videos,setVideos]=useState([]);const [showSettings,setShowSettings]=useState(false);
   const [generating,setGenerating]=useState(false);const [status,setStatus]=useState("");
   const [video,setVideo]=useState(null);const [title,setTitle]=useState("");const [images,setImages]=useState([]);
+  const [selectedVideo,setSelectedVideo]=useState(null);
 
   const refresh=async()=>{
     try{setProfiles((await api.profiles()).profiles||[])}catch(e){}
@@ -198,7 +201,11 @@ function App(){
     }catch(e){setGenerating(false);setStatus("❌"+e.message)}
   };
 
-  const play=(v)=>{setVideo(v.name);setTitle(v.name.replace(".mp4",""));};
+  const play=(v)=>{
+    setVideo(v.name);setTitle(v.title||v.name.replace(".mp4",""));
+    setSelectedVideo(v);
+    if(v.type)setMode(v.type);
+  };
 
   return React.createElement(React.Fragment,null,
     // Sidebar
@@ -209,7 +216,7 @@ function App(){
       React.createElement("h2",null,"📼 视频列表"),
       React.createElement("div",{className:"video-list"},
         ...videos.map(v=>React.createElement("div",{key:v.name,className:"video-card",onClick:()=>play(v)},
-          React.createElement("div",{className:"v-title"},React.createElement("span",{className:"tag "+(v.type==="narration"?"tag-n":"tag-s")},v.type==="narration"?"口播":"科普"),v.name.replace(".mp4","")),
+          React.createElement("div",{className:"v-title"},React.createElement("span",{className:"tag "+(v.type==="narration"?"tag-n":"tag-s")},v.type==="narration"?"口播":"科普"),v.title||v.name.replace(".mp4","")),
           React.createElement("div",{className:"v-meta"},new Date(v.time).toLocaleDateString()+" · "+(v.size/1024/1024).toFixed(1)+"MB")
         ))
       ),
@@ -219,8 +226,8 @@ function App(){
     // Main
     React.createElement("div",{className:"main"},
       React.createElement("h1",null,MODES.find(m=>m.key===mode)?.icon+" "+MODES.find(m=>m.key===mode)?.name),
-      mode==="narration"?React.createElement(NarrationForm,{profiles,onGenerate:generate,generating}):
-      React.createElement(ScienceForm,{profiles,onGenerate:generate,generating}),
+      mode==="narration"?React.createElement(NarrationForm,{profiles,onGenerate:generate,generating,selectedVideo}):
+      React.createElement(ScienceForm,{profiles,onGenerate:generate,generating,selectedVideo}),
       generating?React.createElement("div",{className:"status"},React.createElement("span",{className:"spin"}),status):null
     ),
     // Preview
@@ -231,6 +238,11 @@ function App(){
         React.createElement("div",{className:"placeholder"},React.createElement("span",{className:"icon"},"🎥"),"选择视频播放")
       ),
       images.length>0?React.createElement("div",{className:"imgs"},React.createElement("h3",null,"🖼️ 图片"),React.createElement("div",null,...images.map((u,i)=>React.createElement("img",{key:i,src:API_BASE+u})))):null,
+      selectedVideo?React.createElement("div",{className:"video-details"},
+        React.createElement("div",null,React.createElement("strong",null,"播主："),selectedVideo.narrator_name||"未记录"),
+        React.createElement("div",null,React.createElement("strong",null,"背景："),selectedVideo.background||selectedVideo.theme||"未记录"),
+        selectedVideo.content?React.createElement("div",{className:"copy"},selectedVideo.content):null
+      ):null,
       React.createElement("div",{style:{padding:"10px 18px",fontSize:11,color:"rgba(255,255,255,0.25)"}},status+(title?" · "+title:""))
     ),
     showSettings?React.createElement(SettingsModal,{profiles,voices,onClose:()=>setShowSettings(false),onRefresh:refresh}):null
@@ -238,19 +250,27 @@ function App(){
 }
 
 // ====== Narration Form ======
-function NarrationForm({profiles,onGenerate,generating}){
+function NarrationForm({profiles,onGenerate,generating,selectedVideo}){
   const [topic,setTopic]=useState("");const [content,setContent]=useState("");
   const [pid,setPid]=useState("");
   const [bg,setBg]=useState("");const [bgs,setBgs]=useState([]);
   const [useContent,setUseContent]=useState(true);
   const p=profiles.find(x=>x.id===pid)||{};
 
-  useEffect(()=>{fetch(`${API_BASE}/video-api/backgrounds`).then(r=>r.json()).then(d=>{setBgs(d.backgrounds||[]);if(d.backgrounds&&d.backgrounds[0])setBg(d.backgrounds[0].name)})},[]);
+  useEffect(()=>{fetch(`${API_BASE}/video-api/backgrounds`).then(r=>r.json()).then(d=>{setBgs(d.backgrounds||[]);if(d.backgrounds&&d.backgrounds[0])setBg(current=>current||d.backgrounds[0].name)})},[]);
+  useEffect(()=>{
+    if(!selectedVideo||selectedVideo.type!=="narration")return;
+    setTopic(selectedVideo.topic||selectedVideo.title||"");
+    setContent(selectedVideo.content||"");
+    setPid(selectedVideo.profile_id||"");
+    setBg(selectedVideo.background||"");
+    setUseContent(true);
+  },[selectedVideo]);
 
   const go=()=>{
     if(!pid||!p.id)return alert("请选择播主");
     if(!topic.trim())return alert("请输入主题");
-    const payload={type:"narration",topic,name:p.name||"",company:p.company||"",slogan:p.slogan||"",avatar:p.avatar||"",voice_type:p.voice_id||"",bg_preset:bg};
+    const payload={type:"narration",topic,profile_id:p.id,name:p.name||"",company:p.company||"",slogan:p.slogan||"",avatar:p.avatar||"",voice_type:p.voice_id||"",bg_preset:bg};
     if(useContent&&content.trim()){payload.content=content.trim();payload.sentences=0;}
     else payload.sentences=5;
     onGenerate(payload);
@@ -274,15 +294,24 @@ function NarrationForm({profiles,onGenerate,generating}){
 }
 
 // ====== Science Form ======
-function ScienceForm({profiles,onGenerate,generating}){
+function ScienceForm({profiles,onGenerate,generating,selectedVideo}){
   const [topic,setTopic]=useState("");const [theme,setTheme]=useState("dark");
   const [pid,setPid]=useState("");
+  const [content,setContent]=useState("");
   const p=profiles.find(x=>x.id===pid)||{};
+
+  useEffect(()=>{
+    if(!selectedVideo||selectedVideo.type!=="science")return;
+    setTopic(selectedVideo.topic||selectedVideo.title||"");
+    setContent(selectedVideo.content||"");
+    setPid(selectedVideo.profile_id||"");
+    setTheme(selectedVideo.theme||"dark");
+  },[selectedVideo]);
 
   const go=()=>{
     if(!pid||!p.id)return alert("请选择播主");
     if(!topic.trim())return alert("请输入主题");
-    onGenerate({type:"science",topic,theme,name:p.name||"",company:p.company||"",slogan:p.slogan||"",avatar:p.avatar||"",voice_type:p.voice_id||""});
+    onGenerate({type:"science",topic,theme,profile_id:p.id,name:p.name||"",company:p.company||"",slogan:p.slogan||"",avatar:p.avatar||"",voice_type:p.voice_id||""});
   };
 
   return React.createElement("div",null,
@@ -292,6 +321,7 @@ function ScienceForm({profiles,onGenerate,generating}){
       )
     ),
     React.createElement("div",{className:"fg"},React.createElement("label",null,"🔬 主题"),React.createElement("input",{value:topic,onChange:e=>setTopic(e.target.value),placeholder:"例如：黑洞是如何形成的"})),
+    content?React.createElement("div",{className:"fg"},React.createElement("label",null,"文案内容"),React.createElement("textarea",{value:content,readOnly:true,rows:6})):null,
     React.createElement("div",{className:"fg"},React.createElement("label",null,"🎨 风格"),React.createElement("select",{value:theme,onChange:e=>setTheme(e.target.value)},React.createElement("option",{value:"dark"},"🌙暗色"),React.createElement("option",{value:"light"},"☀️亮色"),React.createElement("option",{value:"warm"},"🔥暖色"))),
     React.createElement("button",{className:"btn",onClick:go,disabled:generating},generating?"生成中...":"🚀 生成视频")
   );

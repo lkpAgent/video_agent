@@ -63,7 +63,7 @@ def _set_task(task_id, status, detail=""):
         tasks[task_id]["detail"] = detail
 
 
-def _generate_science_video(task_id, topic, voice, theme, name, avatar, company, slogan):
+def _generate_science_video(task_id, topic, voice, theme, name, avatar, company, slogan, profile_id=""):
     try:
         # 本次生成的独立临时目录
         work_dir = Path(config.TEMP_DIR) / task_id
@@ -109,6 +109,25 @@ def _generate_science_video(task_id, topic, voice, theme, name, avatar, company,
         from modules.video_builder import build_video
         filename = _safe_video_name(topic)
         video_path = build_video(script, audio_path, image_paths, output_filename=filename)
+        from modules.db import save_video
+        save_video({
+            "filename": Path(video_path).name,
+            "type": "science",
+            "title": script.get("title", topic),
+            "topic": topic,
+            "content": "\n".join(
+                scene.get("narration", "") for scene in script.get("scenes", [])
+                if scene.get("narration")
+            ),
+            "profile_id": profile_id,
+            "narrator_name": name,
+            "narrator_avatar": avatar,
+            "company": company,
+            "slogan": slogan,
+            "voice_id": voice,
+            "theme": theme,
+            "script": script,
+        })
 
         tasks[task_id].update({
             "status": "done", "detail": "✅ 完成！",
@@ -123,7 +142,7 @@ def _generate_science_video(task_id, topic, voice, theme, name, avatar, company,
         config.TEMP_DIR = orig_temp
 
 
-def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, company, slogan, voice_type, bg_preset, content):
+def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, company, slogan, voice_type, bg_preset, content, profile_id=""):
     try:
         # 独立临时目录
         work_dir = Path(config.TEMP_DIR) / task_id
@@ -216,6 +235,21 @@ def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, 
             company=company or "", slogan=slogan or "")
         filename = _safe_video_name(title)
         video_path = record_narration_video(html_path, filename)
+        from modules.db import save_video
+        save_video({
+            "filename": Path(video_path).name,
+            "type": "narration",
+            "title": title,
+            "topic": topic,
+            "content": text,
+            "profile_id": profile_id,
+            "narrator_name": name,
+            "narrator_avatar": avatar,
+            "company": company,
+            "slogan": slogan,
+            "voice_id": voice_type or voice,
+            "background": bg_preset,
+        })
 
         tasks[task_id].update({
             "status": "done", "detail": "✅ 完成！",
@@ -317,8 +351,9 @@ async def api_science(req: Request, bg: BackgroundTasks):
     tasks[tid] = {"id": tid, "status": "starting", "detail": "启动中...", "type": "science",
                   "topic": d.get("topic",""), "created": datetime.now().isoformat()}
     bg.add_task(_generate_science_video, tid,
-                d.get("topic",""), d.get("voice",""), d.get("theme","dark"),
-                d.get("name",""), d.get("avatar",""), d.get("company",""), d.get("slogan",""))
+                d.get("topic",""), d.get("voice","") or d.get("voice_type",""), d.get("theme","dark"),
+                d.get("name",""), d.get("avatar",""), d.get("company",""), d.get("slogan",""),
+                d.get("profile_id",""))
     return {"task_id": tid}
 
 @app.post("/video-api/generate/narration")
@@ -330,7 +365,7 @@ async def api_narration(req: Request, bg: BackgroundTasks):
     bg.add_task(_generate_narration_video, tid,
                 d.get("topic",""), int(d.get("sentences",5)), d.get("voice",""),
                 d.get("name","AI主播"), d.get("avatar",""), d.get("company",""), d.get("slogan",""),
-                d.get("voice_type",""), d.get("bg_preset",""), d.get("content",""))
+                d.get("voice_type",""), d.get("bg_preset",""), d.get("content",""), d.get("profile_id",""))
     return {"task_id": tid}
 
 @app.get("/video-api/status/{task_id}")
@@ -343,11 +378,20 @@ async def api_status(task_id: str):
 
 @app.get("/video-api/videos")
 async def api_videos():
+    from modules.db import list_videos
+    records = list_videos()
+    by_filename = {v["filename"]: v for v in records}
     vids = []
     for f in sorted(VIDEO_OUTPUT.glob("*.mp4"), key=os.path.getmtime, reverse=True):
-        vids.append({"name": f.name, "size": f.stat().st_size,
-                     "time": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
-                     "url": f"/output/{f.name}"})
+        record = by_filename.get(f.name, {})
+        vids.append({
+            **record,
+            "name": f.name,
+            "filename": f.name,
+            "size": f.stat().st_size,
+            "time": record.get("created_at") or datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+            "url": f"/output/{f.name}",
+        })
     return {"videos": vids}
 
 app.mount("/output", StaticFiles(directory=str(VIDEO_OUTPUT)), name="output")

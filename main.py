@@ -138,6 +138,21 @@ def _run_narration_mode(args):
             return
 
         video_path = record_narration_video(html_path, args.output)
+        if Path(video_path).suffix.lower() in (".mp4", ".webm"):
+            from modules.db import save_video
+            save_video({
+                "filename": Path(video_path).name,
+                "type": "narration",
+                "title": title,
+                "topic": args.topic or title,
+                "content": text,
+                "narrator_name": args.name,
+                "narrator_avatar": args.avatar or "",
+                "company": args.company,
+                "slogan": args.slogan,
+                "voice_id": args.voice or config.TTS_VOICE,
+                "background": bg_image,
+            })
         console.print()
         console.print(Panel.fit(
             f"[bold green]✅ 口播视频生成完成！[/bold green]\n\n"
@@ -306,6 +321,25 @@ def main():
             image_paths=image_paths, output_filename=args.output,
             record=not args.no_record
         )
+        if Path(video_path).suffix.lower() in (".mp4", ".webm"):
+            from modules.db import save_video
+            save_video({
+                "filename": Path(video_path).name,
+                "type": "science",
+                "title": script.get("title", topic),
+                "topic": topic,
+                "content": "\n".join(
+                    scene.get("narration", "") for scene in script.get("scenes", [])
+                    if scene.get("narration")
+                ),
+                "narrator_name": args.name,
+                "narrator_avatar": args.avatar or "",
+                "company": args.company,
+                "slogan": args.slogan,
+                "voice_id": args.voice or config.TTS_VOICE,
+                "theme": args.theme or config.VIDEO_THEME,
+                "script": script,
+            })
     except Exception as e:
         console.print(f"[red]视频构建失败: {e}[/red]")
         return
