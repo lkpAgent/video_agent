@@ -200,12 +200,19 @@ def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, 
 
         _set_task(task_id, "formatting", "✨ 大模型智能排版...")
         from modules.content_formatter import format_narration_content
-        text, sentences = format_narration_content(text)
+        text, sentences, format_source = format_narration_content(text)
         tasks[task_id]["content"] = text
-        console.print(f"   智能排版完成: {len(sentences)} 个页面")
-        console.print("   ===== 大模型排版后文案开始 =====")
+        if format_source == "llm":
+            console.print(f"   智能排版完成: {len(sentences)} 个页面")
+            format_label = "大模型排版后文案"
+        else:
+            reason = format_source.removeprefix("fallback:")
+            console.print(f"[yellow]   大模型智能排版失败，已使用兜底排版：{reason}[/yellow]")
+            console.print(f"   兜底排版完成: {len(sentences)} 个页面")
+            format_label = "兜底排版后文案"
+        console.print(f"   ===== {format_label}开始 =====")
         console.print(text, markup=False)
-        console.print("   ===== 大模型排版后文案结束 =====")
+        console.print(f"   ===== {format_label}结束 =====")
         tasks[task_id]["title"] = title
 
         _set_task(task_id, "audio", "🔊 生成配音...")
