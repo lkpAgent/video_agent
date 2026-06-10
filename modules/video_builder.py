@@ -455,7 +455,9 @@ def _record_with_selenium(html_path: str, script: dict, audio_path: str, output_
         safe_title = "".join(c if c.isalnum() or c in "._- " else "_" for c in script.get("title", "video"))[:30]
         output_filename = f"{safe_title}.mp4"
 
-    webm_result = record_with_selenium(html_path, video_dir, total_duration + 3)
+    webm_result = record_with_selenium(
+        html_path, video_dir, total_duration + config.VIDEO_END_HOLD_SECONDS
+    )
     if not webm_result:
         return html_path
 
@@ -511,7 +513,7 @@ def _record_with_playwright(html_path: str, script: dict, audio_path: str, outpu
         page.evaluate("window.__READY = true;")
 
         # 等待整个动画完成
-        wait_ms = int((total_duration + 1) * 1000)
+        wait_ms = int((total_duration + config.VIDEO_END_HOLD_SECONDS) * 1000)
         with Progress() as progress:
             task = progress.add_task("[cyan]录制中...[/cyan]", total=wait_ms // 1000)
             for _ in range(wait_ms // 1000):

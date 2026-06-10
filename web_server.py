@@ -63,7 +63,7 @@ def _set_task(task_id, status, detail=""):
         tasks[task_id]["detail"] = detail
 
 
-def _generate_science_video(task_id, topic, voice, theme, name, avatar, company, slogan, profile_id=""):
+def _generate_science_video(task_id, topic, voice, voice_api_type, theme, name, avatar, company, slogan, profile_id=""):
     try:
         # 本次生成的独立临时目录
         work_dir = Path(config.TEMP_DIR) / task_id
@@ -78,14 +78,13 @@ def _generate_science_video(task_id, topic, voice, theme, name, avatar, company,
         ctx = search_to_context(results) if results else f"主题：{topic}"
 
         _set_task(task_id, "scripting", "📝 LLM 生成脚本...")
-        if voice: config.TTS_VOICE = voice
         if theme: config.VIDEO_THEME = theme
         from modules.script_generator import generate_script
         script = generate_script(topic, ctx)
 
         _set_task(task_id, "audio", "🔊 生成配音...")
         from modules.tts import generate_audio
-        audio_path, _, _ = generate_audio(script)
+        audio_path, _, _ = generate_audio(script, voice, voice_api_type)
 
         _set_task(task_id, "images", "🎨 生成场景 1/? 背景图...")
         from modules.image_gen import generate_scene_images
@@ -125,6 +124,7 @@ def _generate_science_video(task_id, topic, voice, theme, name, avatar, company,
             "company": company,
             "slogan": slogan,
             "voice_id": voice,
+            "voice_type": voice_api_type,
             "theme": theme,
             "script": script,
         })
@@ -142,7 +142,7 @@ def _generate_science_video(task_id, topic, voice, theme, name, avatar, company,
         config.TEMP_DIR = orig_temp
 
 
-def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, company, slogan, voice_type, bg_preset, content, profile_id=""):
+def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, company, slogan, voice_type, voice_api_type, bg_preset, content, profile_id=""):
     try:
         # 独立临时目录
         work_dir = Path(config.TEMP_DIR) / task_id
@@ -150,12 +150,6 @@ def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, 
         orig_temp = config.TEMP_DIR
         config.TEMP_DIR = str(work_dir)
 
-        # 动态应用 voice_type
-        orig_voice_type = config.DOUBAO_TTS_VOICE_TYPE
-        if voice_type:
-            config.DOUBAO_TTS_VOICE_TYPE = voice_type
-        if voice:
-            config.TTS_VOICE = voice
         from modules.search import search_web, search_to_context
 
         # 如果提供了直接内容，跳过搜索和 LLM，直接按行拆分
@@ -164,7 +158,7 @@ def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, 
             if not lines:
                 raise ValueError("内容为空")
             title = topic.strip() if topic and topic.strip() else lines[0]
-            text = "。".join(lines)
+            text = "\n".join(lines)
             n_sentences = len(lines)
             console.print(f"   使用直接内容: {len(lines)} 行")
         else:
@@ -173,8 +167,6 @@ def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, 
 
             _set_task(task_id, "scripting", "📝 LLM 生成口播文案...")
             from openai import OpenAI
-            if voice: config.TTS_VOICE = voice
-
             client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL)
             prompt = f"""主题：{topic}
 生成{n_sentences}句口播文案，每句15-40字。
@@ -205,12 +197,20 @@ def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, 
                     text = raw[:200]
             if not text:
                 raise ValueError("LLM 未生成有效文案")
+
+        _set_task(task_id, "formatting", "✨ 大模型智能排版...")
+        from modules.content_formatter import format_narration_content
+        text, sentences = format_narration_content(text)
+        tasks[task_id]["content"] = text
+        console.print(f"   智能排版完成: {len(sentences)} 个页面")
+        console.print("   ===== 大模型排版后文案开始 =====")
+        console.print(text, markup=False)
+        console.print("   ===== 大模型排版后文案结束 =====")
         tasks[task_id]["title"] = title
 
         _set_task(task_id, "audio", "🔊 生成配音...")
-        from modules.narration_video import split_sentences, generate_narration_audio
-        sentences = split_sentences(text)
-        audio_data = generate_narration_audio(sentences)
+        from modules.narration_video import generate_narration_audio
+        audio_data = generate_narration_audio(sentences, voice_type or voice, voice_api_type)
 
         # 背景图：优先用预设
         bg_image = ""
@@ -241,13 +241,14 @@ def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, 
             "type": "narration",
             "title": title,
             "topic": topic,
-            "content": "\n".join(sentences),
+            "content": text,
             "profile_id": profile_id,
             "narrator_name": name,
             "narrator_avatar": avatar,
             "company": company,
             "slogan": slogan,
             "voice_id": voice_type or voice,
+            "voice_type": voice_api_type,
             "background": bg_preset,
         })
 
@@ -262,7 +263,6 @@ def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, 
         tasks[task_id].update({"status": "error", "detail": f"❌ {e}"})
     finally:
         config.TEMP_DIR = orig_temp
-        config.DOUBAO_TTS_VOICE_TYPE = orig_voice_type
 
 
 # ====== API ======
@@ -351,7 +351,8 @@ async def api_science(req: Request, bg: BackgroundTasks):
     tasks[tid] = {"id": tid, "status": "starting", "detail": "启动中...", "type": "science",
                   "topic": d.get("topic",""), "created": datetime.now().isoformat()}
     bg.add_task(_generate_science_video, tid,
-                d.get("topic",""), d.get("voice","") or d.get("voice_type",""), d.get("theme","dark"),
+                d.get("topic",""), d.get("voice","") or d.get("voice_id",""),
+                int(d.get("voice_api_type", 1)), d.get("theme","dark"),
                 d.get("name",""), d.get("avatar",""), d.get("company",""), d.get("slogan",""),
                 d.get("profile_id",""))
     return {"task_id": tid}
@@ -365,7 +366,8 @@ async def api_narration(req: Request, bg: BackgroundTasks):
     bg.add_task(_generate_narration_video, tid,
                 d.get("topic",""), int(d.get("sentences",5)), d.get("voice",""),
                 d.get("name","AI主播"), d.get("avatar",""), d.get("company",""), d.get("slogan",""),
-                d.get("voice_type",""), d.get("bg_preset",""), d.get("content",""), d.get("profile_id",""))
+                d.get("voice_id","") or d.get("voice_type",""), int(d.get("voice_api_type", 1)),
+                d.get("bg_preset",""), d.get("content",""), d.get("profile_id",""))
     return {"task_id": tid}
 
 @app.get("/video-api/status/{task_id}")
@@ -374,7 +376,7 @@ async def api_status(task_id: str):
     t = tasks[task_id]
     return {"status": t["status"], "detail": t.get("detail",""), "video": t.get("video",""),
             "title": t.get("title",""), "error": t.get("error",""),
-            "images": t.get("images", [])}
+            "images": t.get("images", []), "content": t.get("content", "")}
 
 @app.get("/video-api/videos")
 async def api_videos():
@@ -388,8 +390,9 @@ async def api_videos():
             **record,
             "name": f.name,
             "filename": f.name,
+            "voice_type": record.get("voice_type", 1),
             "size": f.stat().st_size,
-            "time": record.get("created_at") or datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+            "time": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
             "url": f"/output/{f.name}",
         })
     return {"videos": vids}

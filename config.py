@@ -17,7 +17,7 @@ class Config:
     LLM_API_KEY: str = os.getenv("LLM_API_KEY", "your-api-key-here")
     LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
     LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4o")
-    LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "4096"))
+    LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "8192"))
 
     # ======== 图片生成配置 ========
     IMAGE_GEN_ENABLED: bool = os.getenv("IMAGE_GEN_ENABLED", "true").lower() == "true"
@@ -43,6 +43,11 @@ class Config:
     DOUBAO_TTS_API_KEY: str = os.getenv("DOUBAO_TTS_API_KEY", DOUBAO_API_KEY)
     DOUBAO_TTS_VOICE_TYPE: str = os.getenv("DOUBAO_TTS_VOICE_TYPE", "")
     DOUBAO_TTS_CLUSTER: str = os.getenv("DOUBAO_TTS_CLUSTER", "volcano_icl")
+    DOUBAO_TTS_SYNTHESIS_URL: str = os.getenv(
+        "DOUBAO_TTS_SYNTHESIS_URL",
+        "https://openspeech.bytedance.com/api/v3/tts/unidirectional",
+    )
+    DOUBAO_TTS_SYNTHESIS_RESOURCE_ID: str = os.getenv("DOUBAO_TTS_SYNTHESIS_RESOURCE_ID", "seed-tts-2.0")
     IMAGE_OUTPUT_DIR: str = os.getenv("IMAGE_OUTPUT_DIR", "./output/images")
 
     # ======== TTS 配置 ========
@@ -72,6 +77,7 @@ class Config:
     VIDEO_HEIGHT: int = int(os.getenv("VIDEO_HEIGHT", "1920"))
     # 帧率
     VIDEO_FPS: int = int(os.getenv("VIDEO_FPS", "30"))
+    VIDEO_END_HOLD_SECONDS: float = float(os.getenv("VIDEO_END_HOLD_SECONDS", "2"))
     # 视频色温风格："dark"/"light"/"warm"
     VIDEO_THEME: str = os.getenv("VIDEO_THEME", "dark")
 

@@ -16,8 +16,8 @@ import os
 import asyncio
 import uuid
 import base64
+import json
 import requests
-from typing import Optional
 from rich.console import Console
 
 from config import config
@@ -26,7 +26,7 @@ console = Console()
 
 # ====== 统一入口 ======
 
-def tts_generate(text: str, output_path: str) -> str:
+def tts_generate(text: str, output_path: str, voice_id: str = "", voice_type: int = 1) -> str:
     """
     统一 TTS 接口：根据 TTS_PROVIDER 配置自动选择引擎
     """
@@ -36,25 +36,27 @@ def tts_generate(text: str, output_path: str) -> str:
     if provider == "elevenlabs":
         return _elevenlabs_tts(text, output_path)
     elif provider == "doubao":
-        return _doubao_tts(text, output_path)
+        if int(voice_type or 1) == 2:
+            return _doubao_synthesis_tts(text, output_path, voice_id)
+        return _doubao_tts(text, output_path, voice_id)
     else:
-        return _edge_tts_sync(text, output_path)
+        return _edge_tts_sync(text, output_path, voice_id)
 
 
 # ====== Edge TTS（免费，公开音色）======
 
-def _edge_tts_sync(text: str, output_path: str) -> str:
+def _edge_tts_sync(text: str, output_path: str, voice_id: str = "") -> str:
     """Edge TTS 同步调用"""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        loop.run_until_complete(_edge_tts_async(text, output_path))
+        loop.run_until_complete(_edge_tts_async(text, output_path, voice_id=voice_id))
     finally:
         loop.close()
     return output_path
 
 
-async def _edge_tts_async(text: str, output_path: str, retries=3):
+async def _edge_tts_async(text: str, output_path: str, retries=3, voice_id: str = ""):
     """Edge TTS 异步实现，带重试"""
     import edge_tts
     last_err = None
@@ -62,7 +64,7 @@ async def _edge_tts_async(text: str, output_path: str, retries=3):
         try:
             communicate = edge_tts.Communicate(
                 text=text,
-                voice=config.TTS_VOICE,
+                voice=voice_id or config.TTS_VOICE,
                 rate=config.TTS_RATE,
                 pitch=config.TTS_PITCH
             )
@@ -82,10 +84,10 @@ async def _edge_tts_async(text: str, output_path: str, retries=3):
 
 # ====== 豆包 TTS（声音复刻）======
 
-def _doubao_tts(text: str, output_path: str) -> str:
+def _doubao_tts(text: str, output_path: str, voice_id: str = "") -> str:
     """豆包（火山引擎）声音复刻 TTS"""
     api_key = config.DOUBAO_TTS_API_KEY
-    voice_type = config.DOUBAO_TTS_VOICE_TYPE
+    voice_type = voice_id or config.DOUBAO_TTS_VOICE_TYPE
 
     if not api_key:
         raise ValueError("请在 .env 中设置 DOUBAO_API_KEY")
@@ -115,6 +117,87 @@ def _doubao_tts(text: str, output_path: str) -> str:
 
     with open(output_path, "wb") as f:
         f.write(base64.b64decode(audio_b64))
+    return output_path
+
+
+def _decode_doubao_audio_chunks(resp) -> bytes:
+    """按返回顺序合并 Seed-TTS 流中的 Base64 音频块。"""
+    audio_chunks = []
+    messages = []
+    for raw_line in resp.iter_lines(decode_unicode=True):
+        if not raw_line:
+            continue
+        if isinstance(raw_line, bytes):
+            raw_line = raw_line.decode("utf-8", errors="replace")
+        line = raw_line.strip()
+        if line.startswith("data:"):
+            line = line[5:].strip()
+        try:
+            event = json.loads(line)
+        except (TypeError, json.JSONDecodeError):
+            continue
+
+        code = event.get("code", 0)
+        message = event.get("message", "")
+        if code not in (0, 20000000):
+            raise RuntimeError(f"豆包语音合成失败: {code} {message}")
+        if message:
+            messages.append(message)
+
+        data = event.get("data")
+        if isinstance(data, str) and data:
+            cleaned = "".join(data.split())
+            cleaned += "=" * (-len(cleaned) % 4)
+            try:
+                audio_chunks.append(base64.b64decode(cleaned, validate=True))
+            except ValueError as e:
+                raise RuntimeError(f"豆包语音合成接口返回的 Base64 音频块无效: {e}") from e
+
+    if not audio_chunks:
+        raise RuntimeError(f"豆包语音合成接口未返回音频数据: {'; '.join(messages)}")
+    return b"".join(audio_chunks)
+
+
+def _doubao_synthesis_tts(text: str, output_path: str, voice_id: str = "") -> str:
+    """豆包 Seed-TTS 2.0 语音合成接口。"""
+    api_key = config.DOUBAO_TTS_API_KEY
+    speaker = voice_id or config.DOUBAO_TTS_VOICE_TYPE
+    if not api_key:
+        raise ValueError("请在 .env 中设置 DOUBAO_TTS_API_KEY")
+    if not speaker:
+        raise ValueError("豆包语音合成接口缺少 speaker")
+
+    headers = {
+        "X-Api-Key": api_key,
+        "X-Api-Resource-Id": config.DOUBAO_TTS_SYNTHESIS_RESOURCE_ID,
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "req_params": {
+            "text": text,
+            "speaker": speaker,
+            "audio_params": {"format": "mp3", "sample_rate": 24000},
+        }
+    }
+    resp = requests.post(
+        config.DOUBAO_TTS_SYNTHESIS_URL,
+        json=payload,
+        headers=headers,
+        timeout=120,
+        stream=True,
+    )
+    resp.raise_for_status()
+
+    content_type = resp.headers.get("Content-Type", "").lower()
+    if "audio/" in content_type or "application/octet-stream" in content_type:
+        audio_bytes = resp.content
+    else:
+        audio_bytes = _decode_doubao_audio_chunks(resp)
+
+    if len(audio_bytes) < 100:
+        raise RuntimeError("豆包语音合成接口返回的音频数据异常")
+    with open(output_path, "wb") as f:
+        f.write(audio_bytes)
     return output_path
 
 
@@ -158,7 +241,7 @@ def _elevenlabs_tts(text: str, output_path: str) -> str:
 
 # ====== 兼容旧接口（科普模式用）======
 
-async def _generate_one_shot_audio(script: dict, output_path: str):
+async def _generate_one_shot_audio(script: dict, output_path: str, voice_id: str = "", voice_type: int = 1):
     """科普模式：合并旁白 → TTS → 保存文件"""
     scenes = script.get("scenes", [])
     narrations = [s.get("narration", "").strip() for s in scenes if s.get("narration", "").strip()]
@@ -173,9 +256,12 @@ async def _generate_one_shot_audio(script: dict, output_path: str):
     if provider == "elevenlabs":
         _elevenlabs_tts(full_text, output_path)
     elif provider == "doubao":
-        _doubao_tts(full_text, output_path)
+        if int(voice_type or 1) == 2:
+            _doubao_synthesis_tts(full_text, output_path, voice_id)
+        else:
+            _doubao_tts(full_text, output_path, voice_id)
     else:
-        await _edge_tts_async(full_text, output_path)
+        await _edge_tts_async(full_text, output_path, voice_id=voice_id)
 
     console.print(f"✅ 配音完成: {output_path}")
     
@@ -185,7 +271,7 @@ async def _generate_one_shot_audio(script: dict, output_path: str):
         raise RuntimeError("TTS 生成失败，音频文件为空")
 
 
-def generate_audio(script: dict) -> tuple[str, list, list]:
+def generate_audio(script: dict, voice_id: str = "", voice_type: int = 1) -> tuple[str, list, list]:
     """
     科普模式配音：生成完整音频 + 按字数比例分配真实时长给每个场景
     Returns: (音频路径, 空列表, 场景时长列表)
@@ -193,7 +279,7 @@ def generate_audio(script: dict) -> tuple[str, list, list]:
     import subprocess
 
     provider = config.TTS_PROVIDER.lower()
-    provider_name = "ElevenLabs 克隆" if provider == "elevenlabs" else "Edge TTS"
+    provider_name = {"elevenlabs": "ElevenLabs 克隆", "doubao": "豆包 TTS"}.get(provider, "Edge TTS")
     console.print(f"\n🔊 [bold green]正在生成中文配音 ({provider_name})...[/bold green]")
 
     audio_dir = os.path.join(config.TEMP_DIR, "audio")
@@ -206,7 +292,7 @@ def generate_audio(script: dict) -> tuple[str, list, list]:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        loop.run_until_complete(_generate_one_shot_audio(script, merged_path))
+        loop.run_until_complete(_generate_one_shot_audio(script, merged_path, voice_id, voice_type))
     finally:
         loop.close()
 
@@ -244,6 +330,6 @@ def generate_audio(script: dict) -> tuple[str, list, list]:
     return merged_path, [], scene_durations
 
 
-def generate_single_audio(text: str, output_path: str) -> str:
+def generate_single_audio(text: str, output_path: str, voice_id: str = "", voice_type: int = 1) -> str:
     """单段配音（兼容旧接口）"""
-    return tts_generate(text, output_path)
+    return tts_generate(text, output_path, voice_id, voice_type)

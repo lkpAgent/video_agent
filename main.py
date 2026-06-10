@@ -102,7 +102,7 @@ def _run_narration_mode(args):
 
     # Step 2: TTS
     console.print("[bold]━━━ Step 2/4: 生成配音 ━━━[/bold]")
-    audio_data = generate_narration_audio(sentences)
+    audio_data = generate_narration_audio(sentences, args.voice or "", args.voice_type)
 
     # Step 3: 背景图
     bg_image = ""
@@ -151,6 +151,7 @@ def _run_narration_mode(args):
                 "company": args.company,
                 "slogan": args.slogan,
                 "voice_id": args.voice or config.TTS_VOICE,
+                "voice_type": args.voice_type,
                 "background": bg_image,
             })
         console.print()
@@ -239,6 +240,8 @@ def main():
     parser.add_argument("--no-images", action="store_true", help="不生成 AI 图片")
     parser.add_argument("--no-record", action="store_true", help="仅生成 HTML，不录制")
     parser.add_argument("--voice", type=str, help="TTS 语音")
+    parser.add_argument("--voice-type", type=int, choices=[1, 2], default=1,
+                        help="豆包语音类型: 1=声音复刻, 2=语音合成")
     parser.add_argument("--theme", type=str, choices=["dark", "light", "warm"], help="主题风格")
     parser.add_argument("--output", type=str, help="输出文件名")
     parser.add_argument("--search-only", action="store_true", help="仅搜索")
@@ -300,7 +303,7 @@ def main():
     # Step 3: 生成配音
     try:
         console.print("[bold]━━━ Step 3/5: 生成配音 ━━━[/bold]")
-        audio_path, _, _ = generate_audio(script)
+        audio_path, _, _ = generate_audio(script, args.voice or "", args.voice_type)
     except Exception as e:
         console.print(f"[red]配音生成失败: {e}[/red]")
         audio_path = ""
@@ -337,6 +340,7 @@ def main():
                 "company": args.company,
                 "slogan": args.slogan,
                 "voice_id": args.voice or config.TTS_VOICE,
+                "voice_type": args.voice_type,
                 "theme": args.theme or config.VIDEO_THEME,
                 "script": script,
             })

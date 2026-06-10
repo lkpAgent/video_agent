@@ -24,5 +24,5 @@ if [ ! -d "modules" ]; then
 fi
 
 echo "启动后端: http://0.0.0.0:8888"
-nohup python web_server.py > /var/log/video-agent.log 2>&1 &
+nohup python -u web_server.py > /var/log/video-agent.log 2>&1 &
 echo "PID: $!"

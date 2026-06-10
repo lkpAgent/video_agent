@@ -71,7 +71,7 @@ async def _generate_sentence_audio(text: str, output_path: str, voice: str):
     await communicate.save(output_path)
 
 
-def generate_narration_audio(sentences: list[str]) -> list[dict]:
+def generate_narration_audio(sentences: list[str], voice_id: str = "", voice_type: int = 1) -> list[dict]:
     """
     逐句生成音频 + ffprobe 测真实时长 → 精准同步
     """
@@ -88,7 +88,7 @@ def generate_narration_audio(sentences: list[str]) -> list[dict]:
     audio_files = []
     for i, s in enumerate(sentences):
         path = os.path.join(audio_dir, f"s_{i+1:02d}.mp3")
-        tts_generate(s, path)
+        tts_generate(s, path, voice_id, voice_type)
 
         dur = _get_mp3_duration(path)
         console.print(f"   [dim]ffprobe 实测: {dur:.2f}s, 字数估算: {len(s)/4:.1f}s[/dim]")
@@ -240,7 +240,7 @@ body{{width:{config.VIDEO_WIDTH}px;height:{config.VIDEO_HEIGHT}px;overflow:hidde
 
 /* 内容层 */
 #content{{position:relative;z-index:1;width:100%;height:100%;
-  padding:0 100px}}
+  padding:0 60px}}
 
 /* 标题：向页面中部靠拢 */
 #title{{position:absolute;top:29%;left:50%;transform:translate(-50%,-50%);
@@ -252,7 +252,10 @@ body{{width:{config.VIDEO_WIDTH}px;height:{config.VIDEO_HEIGHT}px;overflow:hidde
 #sentence-area{{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
   text-align:center;display:flex;flex-direction:column;align-items:center;width:100%}}
 #sentence{{font-size:52px;font-weight:700;letter-spacing:3px;line-height:1.4;
-  max-width:85%;transition:opacity 0.4s;text-shadow:0 0 40px rgba(255,255,255,0.15)}}
+  width:100%;max-width:100%;
+  transition:opacity 0.4s;text-shadow:0 0 40px rgba(255,255,255,0.15)}}
+.sentence-line{{display:block;width:100%;white-space:normal;overflow-wrap:normal;
+  word-break:normal;text-wrap:balance}}
 .sentence-enter{{animation:senIn 0.5s ease-out}}
 .deterministic-render #sentence{{animation:none!important;opacity:1!important;transform:none!important}}
 @keyframes senIn{{from{{opacity:0;transform:translateY(15px)}}to{{opacity:1;transform:translateY(0)}}}}
@@ -335,11 +338,26 @@ const bars=document.querySelectorAll('.wave-bar');
 const prog=document.getElementById('progress');
 const timelineTimers=[];
 
+function setSentenceText(text){{
+  const rawText=String(text ?? '');
+  senEl.replaceChildren();
+  rawText.split('\\n').forEach(line=>{{
+    const lineEl=document.createElement('div');
+    lineEl.className='sentence-line';
+    lineEl.textContent=line || '\\u00a0';
+    senEl.appendChild(lineEl);
+  }});
+  senEl.dataset.rawText=rawText;
+  return rawText;
+}}
+window.__setSentenceText=setSentenceText;
+window.__getSentenceText=()=>senEl.dataset.rawText || '';
+
 function showSentence(idx){{
   if(idx>=data.length)return;
   if(idx===window._curScene)return;
   window._curScene=idx;
-  senEl.textContent=data[idx].text;
+  setSentenceText(data[idx].text);
   senEl.classList.remove('sentence-enter');
   void senEl.offsetWidth;
   senEl.classList.add('sentence-enter');
@@ -390,13 +408,13 @@ window.__renderAt=(seconds)=>{{
 window.__renderSentence=(idx)=>{{
   document.body.classList.add('deterministic-render');
   window._curScene=idx;
-  senEl.textContent=data[idx].text;
+  setSentenceText(data[idx].text);
   senEl.classList.remove('sentence-enter');
   senEl.style.animation='none';
   senEl.style.opacity='1';
   senEl.style.transform='none';
   prog.style.width=((times[idx]/total)*100)+'%';
-  return senEl.textContent;
+  return window.__getSentenceText();
 }};
 
 window.__renderWave=(phase)=>{{
@@ -450,7 +468,9 @@ def _record_narration_selenium(html_path: str, output_filename: str = None) -> s
     total_duration = _read_narration_total_duration(html_path)
     console.print("📹 [cyan]Selenium 录制口播视频...[/cyan]")
     console.print(f"⏱️  预计时长: {total_duration:.1f} 秒")
-    webm_result = record_with_selenium(html_path, video_dir, total_duration + 3)
+    webm_result = record_with_selenium(
+        html_path, video_dir, total_duration + config.VIDEO_END_HOLD_SECONDS
+    )
     if not webm_result:
         return html_path
 
@@ -553,13 +573,13 @@ def _record_narration_playwright(html_path: str, output_filename: str = None) ->
 
         # 从页面获取总时长
         try:
-            total_duration = page.evaluate("() => total") + 3
+            total_duration = page.evaluate("() => total")
         except Exception:
             total_duration = 30
 
         console.print(f"⏱️  预计时长: {total_duration:.0f} 秒")
 
-        wait_ms = int((total_duration + 2) * 1000)
+        wait_ms = int((total_duration + config.VIDEO_END_HOLD_SECONDS) * 1000)
         with Progress() as progress:
             task = progress.add_task("[cyan]录制中...[/cyan]", total=wait_ms // 1000)
             for _ in range(wait_ms // 1000):

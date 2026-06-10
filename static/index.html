@@ -8,34 +8,40 @@
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:#0a0a14;color:#ffffff;height:100vh;overflow:hidden}
+:root{--bg:#080812;--panel:#10101e;--panel-2:#151527;--surface:#1a1a2c;--border:rgba(167,170,255,.16);--text:#f4f4fb;--muted:#aaaac2;--subtle:#7f819c;--primary:#7c6cff;--primary-2:#b44cff}
+body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:radial-gradient(circle at 50% -20%,#17152c 0,var(--bg) 42%);color:var(--text);height:100vh;overflow:hidden}
 #root{display:flex;height:100vh}
-.sidebar{width:280px;background:#0f0f1e;border-right:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;flex-shrink:0}
-.sidebar .logo{padding:20px;font-size:17px;font-weight:700;background:linear-gradient(135deg,#6366f1,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.sidebar h2{padding:16px 20px 6px;font-size:11px;font-weight:600;letter-spacing:2px;color:rgba(255,255,255,0.25)}
-.mode-item{padding:10px 20px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:8px;border-left:2px solid transparent;color:rgba(255,255,255,0.65)}
-.mode-item:hover{background:rgba(255,255,255,0.03);color:#fff}
-.mode-item.active{background:rgba(99,102,241,0.08);border-left-color:#6366f1;color:#a5b4fc;font-weight:600}
+.sidebar{width:280px;background:linear-gradient(180deg,#111122,#0d0d19);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;box-shadow:12px 0 32px rgba(0,0,0,.18)}
+.sidebar .logo{padding:19px 20px;font-size:17px;font-weight:800;letter-spacing:.4px;background:linear-gradient(135deg,#8b7cff,#c35cff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;border-bottom:1px solid rgba(255,255,255,.05)}
+.sidebar h2{padding:18px 20px 8px;font-size:11px;font-weight:700;letter-spacing:1.6px;color:#9698b5;text-transform:uppercase}
+.mode-item{padding:11px 20px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:9px;border-left:3px solid transparent;color:#c6c7db;transition:.18s ease}
+.mode-item:hover{background:rgba(124,108,255,.09);color:#fff}
+.mode-item.active{background:linear-gradient(90deg,rgba(124,108,255,.2),rgba(124,108,255,.04));border-left-color:#8376ff;color:#fff;font-weight:700}
 .video-list{flex:1;overflow-y:auto;padding:8px 12px}
-.video-card{padding:10px;margin-bottom:6px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:6px;cursor:pointer}
-.video-card:hover{background:rgba(99,102,241,0.06);border-color:rgba(99,102,241,0.2)}
-.video-card .v-title{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.video-card .v-meta{font-size:10px;color:rgba(255,255,255,0.3)}
+.video-card{padding:11px 10px;margin-bottom:7px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08);border-radius:8px;cursor:pointer;transition:.18s ease}
+.video-card:hover{transform:translateX(2px);background:rgba(124,108,255,.1);border-color:rgba(124,108,255,.38)}
+.video-card.selected{background:rgba(124,108,255,.14);border-color:rgba(124,108,255,.55)}
+.video-card .v-title{font-size:12px;font-weight:600;color:#f0f0f8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.video-card .v-meta{font-size:10px;color:#9294af;margin-top:4px}
+.video-card .v-meta-row{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.video-card .v-author{color:#b8b3e8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:9px;margin-right:4px;font-weight:600}
 .tag-n{background:rgba(99,102,241,0.2);color:#a5b4fc}
 .tag-s{background:rgba(168,85,247,0.2);color:#c4b5fd}
-.main{flex:1 1 0;display:flex;flex-direction:column;overflow-y:auto;padding:30px 40px}
-.main h1{font-size:20px;font-weight:700;margin-bottom:14px}
-.fg{margin-bottom:10px}
-.fg label{display:block;font-size:11px;color:rgba(255,255,255,0.7);margin-bottom:3px}
-.fg input,.fg textarea,.fg select{width:100%;padding:9px 12px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.18);border-radius:7px;color:#ffffff;font-size:13px;outline:none;font-family:inherit}
-.fg input:focus,.fg textarea:focus,.fg select:focus{border-color:#6366f1}
+.main{flex:1 1 0;display:flex;flex-direction:column;overflow-y:auto;padding:30px 40px;background:linear-gradient(180deg,rgba(12,12,24,.7),rgba(8,8,18,.88))}
+.main h1{font-size:21px;font-weight:800;margin-bottom:18px;letter-spacing:.3px}
+.fg{margin-bottom:14px}
+.fg label{display:block;font-size:12px;font-weight:600;color:#c7c8dc;margin-bottom:7px}
+.fg input,.fg textarea,.fg select{width:100%;padding:10px 12px;background:#1a1a27;border:1px solid rgba(180,183,220,.28);border-radius:8px;color:#fff;font-size:13px;outline:none;font-family:inherit;transition:.18s ease}
+.fg input::placeholder,.fg textarea::placeholder{color:#777990}
+.fg input:hover,.fg textarea:hover,.fg select:hover{border-color:rgba(180,183,220,.46)}
+.fg input:focus,.fg textarea:focus,.fg select:focus{border-color:#8376ff;box-shadow:0 0 0 3px rgba(124,108,255,.14)}
 .fg select option{background:#1a1a2e;color:#fff}
 .fg textarea{resize:vertical;min-height:80px}
 .fr{display:flex;gap:10px}.fr .fg{flex:1}
-.chip{padding:6px 14px;border-radius:20px;font-size:12px;cursor:pointer;border:1px solid rgba(255,255,255,0.15);display:inline-flex;align-items:center;gap:6px;color:rgba(255,255,255,0.7);margin:2px}
+.chip{padding:7px 14px;border-radius:20px;font-size:12px;cursor:pointer;border:1px solid rgba(183,185,220,.25);display:inline-flex;align-items:center;gap:6px;color:#c8c9db;margin:2px;background:rgba(255,255,255,.025);transition:.18s ease}
 .chip:hover{border-color:rgba(255,255,255,0.3);color:#fff}
-.chip.on{background:rgba(99,102,241,0.15);border-color:#6366f1;color:#a5b4fc;font-weight:600}
+.chip.on{background:rgba(124,108,255,.2);border-color:#8376ff;color:#e1ddff;font-weight:700;box-shadow:0 0 0 2px rgba(124,108,255,.08)}
 .chip .dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,0.2)}
 .chip.on .dot{background:#6366f1}
 .bg-grid{display:flex;gap:8px;flex-wrap:wrap}
@@ -43,21 +49,21 @@ body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:#0a0a14;c
 .bg-opt:hover{border-color:rgba(255,255,255,0.25)}
 .bg-opt.on{border-color:#6366f1;box-shadow:0 0 8px rgba(99,102,241,0.25)}
 .bg-opt .fill{width:100%;height:100%}
-.btn{width:100%;padding:12px;background:linear-gradient(135deg,#6366f1,#a855f7);border:none;border-radius:9px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px}
+.btn{width:100%;padding:13px;background:linear-gradient(135deg,#6864f7,#ad49ed);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#fff;font-size:14px;font-weight:800;cursor:pointer;margin-top:8px;transition:.18s ease}
 .btn:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(99,102,241,0.3)}
 .btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
 .btn-s{padding:6px 14px;font-size:11px;width:auto;margin:2px;border-radius:6px}
 .status{padding:10px 14px;background:rgba(255,255,255,0.02);border-radius:7px;font-size:12px;margin-top:10px}
 .spin{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,0.2);border-top-color:#6366f1;border-radius:50%;animation:spin 0.8s linear infinite;margin-right:6px;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
-.preview{flex:1 1 0;background:#0f0f1e;border-left:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;flex-shrink:0}
-.preview h2{padding:18px;font-size:13px;font-weight:600;color:rgba(255,255,255,0.35)}
+.preview{flex:1 1 0;background:linear-gradient(180deg,#10101e,#0d0d19);border-left:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0}
+.preview h2{padding:18px;font-size:13px;font-weight:700;color:#aeb0c8;border-bottom:1px solid rgba(255,255,255,.05)}
 .player{flex:1;display:flex;align-items:center;justify-content:center;padding:16px}
 .player video{width:100%;border-radius:6px;max-height:65vh}
-.placeholder{text-align:center;color:rgba(255,255,255,0.15);font-size:13px}
+.placeholder{text-align:center;color:#777991;font-size:13px}
 .placeholder .icon{font-size:40px;margin-bottom:8px;display:block}
 .imgs{padding:8px 18px;border-top:1px solid rgba(255,255,255,0.05);max-height:130px;overflow-y:auto}
-.imgs h3{font-size:10px;color:rgba(255,255,255,0.25);margin-bottom:5px}
+.imgs h3{font-size:10px;color:#9597b0;font-weight:700;margin-bottom:5px}
 .imgs div{display:flex;flex-wrap:wrap;gap:4px}
 .imgs img{width:56px;height:32px;object-fit:cover;border-radius:3px;border:1px solid rgba(255,255,255,0.08)}
 .video-details{padding:12px 18px;border-top:1px solid rgba(255,255,255,0.05);font-size:11px;color:rgba(255,255,255,0.55);max-height:220px;overflow-y:auto}
@@ -68,8 +74,12 @@ body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:#0a0a14;c
 .modal .row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05)}
 .modal .row .info{flex:1}
 .modal .row .name{font-weight:600;font-size:14px}
-.modal .row .meta{font-size:11px;color:rgba(255,255,255,0.35);margin-top:2px}
+.modal .row .meta{font-size:11px;color:#999bb5;margin-top:3px}
 .modal .row .acts{display:flex;gap:6px}
+.sidebar-action{padding:11px 20px;font-size:11px;font-weight:600;color:#9fa1ba;cursor:pointer;transition:.18s ease}
+.sidebar-action:hover{color:#fff;background:rgba(124,108,255,.08)}
+.sidebar-action.first{border-top:1px solid rgba(255,255,255,.08)}
+.footer-status{padding:10px 18px;font-size:11px;color:#8587a0;border-top:1px solid rgba(255,255,255,.05)}
 </style>
 <script>const API_BASE=window.location.hostname==='localhost'?'http://localhost:8888':'';</script>
 </head>
@@ -82,6 +92,16 @@ const formatNarrationContent=(content)=>{
   if(!content)return "";
   if(content.includes("\n"))return content;
   return content.replace(/([。！？!?]+)(?=\S)/g,"$1\n");
+};
+
+const formatVideoTime=(value)=>{
+  if(!value)return "时间未记录";
+  const date=new Date(String(value).replace(" ","T"));
+  if(Number.isNaN(date.getTime()))return String(value);
+  return date.toLocaleString("zh-CN",{
+    year:"numeric",month:"2-digit",day:"2-digit",
+    hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false
+  });
 };
 
 const BACKGROUNDS=[
@@ -102,6 +122,7 @@ const api={profiles:()=>fetch(`${API_BASE}/video-api/profiles`).then(r=>r.json()
            saveProfile:p=>fetch(`${API_BASE}/video-api/profiles`+ (p.id?('/'+p.id):''),{method:p.id?'PUT':'POST',headers:{"Content-Type":"application/json"},body:JSON.stringify(p)}),
            delProfile:id=>fetch(`${API_BASE}/video-api/profiles/`+id,{method:"DELETE"}),
            voices:()=>fetch(`${API_BASE}/video-api/voices`).then(r=>r.json()),
+           saveVoice:v=>fetch(`${API_BASE}/video-api/voices`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(v)}),
            videos:()=>fetch(`${API_BASE}/video-api/videos`).then(r=>r.json()),
            uploadAvatar:fd=>fetch(`${API_BASE}/video-api/upload/avatar`,{method:"POST",body:fd}).then(r=>r.json()),
            generate:(type,payload)=>fetch(`${API_BASE}/video-api/generate/`+type,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}).then(r=>r.json()),
@@ -113,18 +134,21 @@ function SettingsModal({profiles,voices,onClose,onRefresh}){
   const [editing,setEditing]=useState(null);
   const [name,setName]=useState("");const [company,setCompany]=useState("");
   const [slogan,setSlogan]=useState("");const [vid,setVid]=useState("");
+  const [voiceType,setVoiceType]=useState(1);
   const [avatar,setAvatar]=useState("");
+  const [showVoices,setShowVoices]=useState(false);
 
   const beginEdit=(p)=>{
     setEditing(p?p.id:"new");
     setName(p?p.name||"":"");setCompany(p?p.company||"":"");
     setSlogan(p?p.slogan||"":"");setVid(p?p.voice_id||"":"");
+    setVoiceType(p?Number(p.voice_type||1):1);
     setAvatar(p?p.avatar||"":"");
   };
 
   const save=async()=>{
     if(!name.trim())return;
-    const d={name,company,slogan,voice_id:vid,avatar};
+    const d={name,company,slogan,voice_id:vid,voice_type:voiceType,avatar};
     if(editing&&editing!=="new")d.id=editing;
     await api.saveProfile(d);
     setEditing(null);onRefresh();
@@ -134,10 +158,27 @@ function SettingsModal({profiles,voices,onClose,onRefresh}){
 
   const vs=Array.isArray(voices)?voices:[];
   const voicename=(voice_id)=>{const v=vs.find(x=>x.voice_id===voice_id);return v?v.name:"未知";};
+  const voiceLabel=(v)=>v.name+" · "+(Number(v.type||1)===2?"语音合成":"声音复刻");
+  const toggleVoiceType=async(v)=>{
+    await api.saveVoice({...v,type:Number(v.type||1)===2?1:2});
+    onRefresh();
+  };
 
   return React.createElement("div",{className:"modal-overlay",onClick:onClose},
     React.createElement("div",{className:"modal",onClick:e=>e.stopPropagation()},
       React.createElement("h3",null,"⚙️ 播主设置"),
+      React.createElement("button",{className:"btn btn-s",style:{marginBottom:10,background:"rgba(255,255,255,0.08)"},onClick:()=>setShowVoices(!showVoices)},showVoices?"收起音色设置":"音色接口设置"),
+      showVoices?React.createElement("div",{className:"fg",style:{padding:10,border:"1px solid rgba(99,102,241,0.25)",borderRadius:8,marginBottom:14}},
+        React.createElement("label",null,"豆包音色接口类型（不是播主）"),
+        ...vs.map(v=>React.createElement("div",{key:"voice-"+v.id,className:"row"},
+          React.createElement("div",{className:"info"},
+            React.createElement("div",{className:"name"},v.name),
+            React.createElement("div",{className:"meta"},v.voice_id+" · "+(Number(v.type||1)===2?"语音合成 API":"声音复刻 API"))
+          ),
+          React.createElement("button",{className:"btn-s chip",onClick:()=>toggleVoiceType(v)},"切换类型")
+        ))
+      ):null,
+      React.createElement("div",{style:{fontSize:11,color:"#aeb0c8",fontWeight:700,marginBottom:6}},"播主列表（"+profiles.length+"）"),
       ...profiles.map(p=>{
         if(!p||!p.id)return null;
         return React.createElement("div",{key:p.id,className:"row"},
@@ -159,7 +200,7 @@ function SettingsModal({profiles,voices,onClose,onRefresh}){
         ),
         React.createElement("div",{className:"fg"},React.createElement("label",null,"配音"),
           React.createElement("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
-            ...vs.map(v=>React.createElement("div",{key:v.voice_id,className:"chip"+(vid===v.voice_id?" on":""),onClick:()=>setVid(v.voice_id)},React.createElement("span",{className:"dot"}),v.name))
+            ...vs.map(v=>React.createElement("div",{key:v.voice_id,className:"chip"+(vid===v.voice_id?" on":""),onClick:()=>{setVid(v.voice_id);setVoiceType(Number(v.type||1))}},React.createElement("span",{className:"dot"}),voiceLabel(v)))
           )
         ),
         React.createElement("div",{className:"fg"},React.createElement("label",null,"头像"),
@@ -186,6 +227,7 @@ function App(){
   const [generating,setGenerating]=useState(false);const [status,setStatus]=useState("");
   const [video,setVideo]=useState(null);const [title,setTitle]=useState("");const [images,setImages]=useState([]);
   const [selectedVideo,setSelectedVideo]=useState(null);
+  const [optimizedContent,setOptimizedContent]=useState("");
 
   const refresh=async()=>{
     try{setProfiles((await api.profiles()).profiles||[])}catch(e){}
@@ -195,12 +237,12 @@ function App(){
   useEffect(()=>{refresh()},[]);
 
   const generate=async(payload)=>{
-    setGenerating(true);setStatus("启动中...");setImages([]);
+    setGenerating(true);setStatus("启动中...");setImages([]);setOptimizedContent("");
     try{
       const d=await api.generate(payload.type==="narration"?"narration":"science",payload);
       const id=setInterval(async()=>{
         const st=await api.status(d.task_id);
-        setStatus(st.detail||st.status);if(st.images)setImages(st.images);if(st.title)setTitle(st.title);
+        setStatus(st.detail||st.status);if(st.images)setImages(st.images);if(st.title)setTitle(st.title);if(st.content)setOptimizedContent(st.content);
         if(st.status==="done"){clearInterval(id);setGenerating(false);setVideo(st.video);setStatus("✅完成");refresh();}
         else if(st.status==="error"){clearInterval(id);setGenerating(false);setStatus("❌"+(st.error||""));}
       },1500);
@@ -221,18 +263,21 @@ function App(){
       ...MODES.map(m=>React.createElement("div",{key:m.key,className:"mode-item"+(mode===m.key?" active":""),onClick:()=>setMode(m.key)},React.createElement("span",null,m.icon),m.name)),
       React.createElement("h2",null,"📼 视频列表"),
       React.createElement("div",{className:"video-list"},
-        ...videos.map(v=>React.createElement("div",{key:v.name,className:"video-card",onClick:()=>play(v)},
+        ...videos.map(v=>React.createElement("div",{key:v.name,className:"video-card"+(video===v.name?" selected":""),onClick:()=>play(v)},
           React.createElement("div",{className:"v-title"},React.createElement("span",{className:"tag "+(v.type==="narration"?"tag-n":"tag-s")},v.type==="narration"?"口播":"科普"),v.title||v.name.replace(".mp4","")),
-          React.createElement("div",{className:"v-meta"},new Date(v.time).toLocaleDateString()+" · "+(v.size/1024/1024).toFixed(1)+"MB")
+          React.createElement("div",{className:"v-meta"},formatVideoTime(v.time)),
+          React.createElement("div",{className:"v-meta v-meta-row"},
+            React.createElement("span",{className:"v-author"},"👤 "+(v.narrator_name||"播主未记录")),
+            React.createElement("span",null,(v.size/1024/1024).toFixed(1)+"MB")
+          )
         ))
       ),
-      React.createElement("div",{style:{padding:"12px 20px",borderTop:"1px solid rgba(255,255,255,0.06)",fontSize:11,color:"rgba(255,255,255,0.3)",cursor:"pointer"},onClick:()=>setShowSettings(true)},"⚙️ 播主设置"),
-      React.createElement("div",{style:{padding:"0 20px 12px",fontSize:11,color:"rgba(255,255,255,0.3)",cursor:"pointer"},onClick:refresh},"🔄 刷新列表"),
+      React.createElement("div",{className:"sidebar-action first",onClick:()=>setShowSettings(true)},"⚙️ 播主设置"),
     ),
     // Main
     React.createElement("div",{className:"main"},
       React.createElement("h1",null,MODES.find(m=>m.key===mode)?.icon+" "+MODES.find(m=>m.key===mode)?.name),
-      mode==="narration"?React.createElement(NarrationForm,{profiles,onGenerate:generate,generating,selectedVideo}):
+      mode==="narration"?React.createElement(NarrationForm,{profiles,onGenerate:generate,generating,selectedVideo,optimizedContent}):
       React.createElement(ScienceForm,{profiles,onGenerate:generate,generating,selectedVideo}),
       generating?React.createElement("div",{className:"status"},React.createElement("span",{className:"spin"}),status):null
     ),
@@ -249,14 +294,14 @@ function App(){
         React.createElement("div",null,React.createElement("strong",null,"背景："),selectedVideo.background||selectedVideo.theme||"未记录"),
         selectedVideo.content?React.createElement("div",{className:"copy"},selectedVideo.type==="narration"?formatNarrationContent(selectedVideo.content):selectedVideo.content):null
       ):null,
-      React.createElement("div",{style:{padding:"10px 18px",fontSize:11,color:"rgba(255,255,255,0.25)"}},status+(title?" · "+title:""))
+      React.createElement("div",{className:"footer-status"},status+(title?" · "+title:""))
     ),
     showSettings?React.createElement(SettingsModal,{profiles,voices,onClose:()=>setShowSettings(false),onRefresh:refresh}):null
   );
 }
 
 // ====== Narration Form ======
-function NarrationForm({profiles,onGenerate,generating,selectedVideo}){
+function NarrationForm({profiles,onGenerate,generating,selectedVideo,optimizedContent}){
   const [topic,setTopic]=useState("");const [content,setContent]=useState("");
   const [pid,setPid]=useState("");
   const [bg,setBg]=useState("");const [bgs,setBgs]=useState([]);
@@ -272,11 +317,14 @@ function NarrationForm({profiles,onGenerate,generating,selectedVideo}){
     setBg(selectedVideo.background||"");
     setUseContent(true);
   },[selectedVideo]);
+  useEffect(()=>{
+    if(optimizedContent)setContent(optimizedContent);
+  },[optimizedContent]);
 
   const go=()=>{
     if(!pid||!p.id)return alert("请选择播主");
     if(!topic.trim())return alert("请输入主题");
-    const payload={type:"narration",topic,profile_id:p.id,name:p.name||"",company:p.company||"",slogan:p.slogan||"",avatar:p.avatar||"",voice_type:p.voice_id||"",bg_preset:bg};
+    const payload={type:"narration",topic,profile_id:p.id,name:p.name||"",company:p.company||"",slogan:p.slogan||"",avatar:p.avatar||"",voice_id:p.voice_id||"",voice_api_type:Number(p.voice_type||1),bg_preset:bg};
     if(useContent&&content.trim()){payload.content=content.trim();payload.sentences=0;}
     else payload.sentences=5;
     onGenerate(payload);
@@ -289,7 +337,7 @@ function NarrationForm({profiles,onGenerate,generating,selectedVideo}){
       )
     ),
     React.createElement("div",{className:"fg"},React.createElement("label",null,"🎯 主题"),React.createElement("input",{value:topic,onChange:e=>setTopic(e.target.value),placeholder:"例如：时间管理的三个秘诀"})),
-    React.createElement("div",{className:"fg"},React.createElement("label",null,"📝 口播内容（每行一句）"),React.createElement("textarea",{value:content,onChange:e=>setContent(e.target.value),placeholder:"每行一句话，按行拆分为每P画面...",rows:4})),
+    React.createElement("div",{className:"fg"},React.createElement("label",null,"📝 口播内容（空行分隔页面）"),React.createElement("textarea",{value:content,onChange:e=>setContent(e.target.value),placeholder:"输入原始文案，生成前会由大模型智能分组排版...",rows:7})),
     React.createElement("div",{className:"fg"},React.createElement("label",null,"🖼️ 背景"),
       React.createElement("div",{className:"bg-grid"},
         ...bgs.map(b=>React.createElement("div",{key:b.name,className:"bg-opt"+(bg===b.name?" on":""),onClick:()=>setBg(b.name),title:b.name},React.createElement("img",{src:API_BASE+b.url,style:{width:"100%",height:"100%",objectFit:"cover"}})))
@@ -317,7 +365,7 @@ function ScienceForm({profiles,onGenerate,generating,selectedVideo}){
   const go=()=>{
     if(!pid||!p.id)return alert("请选择播主");
     if(!topic.trim())return alert("请输入主题");
-    onGenerate({type:"science",topic,theme,profile_id:p.id,name:p.name||"",company:p.company||"",slogan:p.slogan||"",avatar:p.avatar||"",voice_type:p.voice_id||""});
+    onGenerate({type:"science",topic,theme,profile_id:p.id,name:p.name||"",company:p.company||"",slogan:p.slogan||"",avatar:p.avatar||"",voice_id:p.voice_id||"",voice_api_type:Number(p.voice_type||1)});
   };
 
   return React.createElement("div",null,

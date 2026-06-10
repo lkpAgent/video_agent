@@ -40,6 +40,7 @@ def _init_table(conn):
                 company VARCHAR(200) DEFAULT '',
                 slogan VARCHAR(200) DEFAULT '',
                 voice_id VARCHAR(100) DEFAULT '',
+                voice_type INTEGER DEFAULT 1,
                 avatar VARCHAR(500) DEFAULT '',
                 created_at TIMESTAMP DEFAULT NOW()
             )
@@ -52,6 +53,7 @@ def _init_table(conn):
                 company TEXT DEFAULT '',
                 slogan TEXT DEFAULT '',
                 voice_id TEXT DEFAULT '',
+                voice_type INTEGER DEFAULT 1,
                 avatar TEXT DEFAULT '',
                 created_at TEXT DEFAULT (datetime('now'))
             )
@@ -74,6 +76,7 @@ def _init_table(conn):
                 company VARCHAR(200) DEFAULT '',
                 slogan VARCHAR(200) DEFAULT '',
                 voice_id VARCHAR(100) DEFAULT '',
+                voice_type INTEGER DEFAULT 1,
                 background VARCHAR(500) DEFAULT '',
                 theme VARCHAR(100) DEFAULT '',
                 script_json TEXT DEFAULT '',
@@ -95,6 +98,7 @@ def _init_table(conn):
                 company TEXT DEFAULT '',
                 slogan TEXT DEFAULT '',
                 voice_id TEXT DEFAULT '',
+                voice_type INTEGER DEFAULT 1,
                 background TEXT DEFAULT '',
                 theme TEXT DEFAULT '',
                 script_json TEXT DEFAULT '',
@@ -105,6 +109,8 @@ def _init_table(conn):
     try:
         if config.DATABASE_URL.startswith("postgres"):
             cur.execute("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS avatar VARCHAR(500) DEFAULT ''")
+            cur.execute("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS voice_type INTEGER DEFAULT 1")
+            cur.execute("ALTER TABLE videos ADD COLUMN IF NOT EXISTS voice_type INTEGER DEFAULT 1")
         else:
             cur.execute("ALTER TABLE profiles ADD COLUMN avatar TEXT DEFAULT ''")
         conn.commit()
@@ -117,7 +123,8 @@ def _init_table(conn):
             CREATE TABLE IF NOT EXISTS voices (
                 id SERIAL PRIMARY KEY,
                 name VARCHAR(100) NOT NULL,
-                voice_id VARCHAR(100) NOT NULL UNIQUE
+                voice_id VARCHAR(100) NOT NULL UNIQUE,
+                type INTEGER DEFAULT 1
             )
         """)
     else:
@@ -125,10 +132,20 @@ def _init_table(conn):
             CREATE TABLE IF NOT EXISTS voices (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
-                voice_id TEXT NOT NULL UNIQUE
+                voice_id TEXT NOT NULL UNIQUE,
+                type INTEGER DEFAULT 1
             )
         """)
     conn.commit()
+    for table, column in (("profiles", "voice_type"), ("voices", "type"), ("videos", "voice_type")):
+        try:
+            if config.DATABASE_URL.startswith("postgres"):
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} INTEGER DEFAULT 1")
+            else:
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} INTEGER DEFAULT 1")
+            conn.commit()
+        except Exception:
+            conn.rollback()
 
 
 def _row_to_dict(row, cur):
@@ -168,17 +185,19 @@ def save_profile(data):
 
     if pid and get_profile(pid):
         cur.execute(
-            "UPDATE profiles SET name=%s, company=%s, slogan=%s, voice_id=%s, avatar=%s WHERE id=%s" if pg else
-            "UPDATE profiles SET name=?, company=?, slogan=?, voice_id=?, avatar=? WHERE id=?",
-            (data["name"], data.get("company",""), data.get("slogan",""), data.get("voice_id",""), data.get("avatar",""), pid)
+            "UPDATE profiles SET name=%s, company=%s, slogan=%s, voice_id=%s, voice_type=%s, avatar=%s WHERE id=%s" if pg else
+            "UPDATE profiles SET name=?, company=?, slogan=?, voice_id=?, voice_type=?, avatar=? WHERE id=?",
+            (data["name"], data.get("company",""), data.get("slogan",""), data.get("voice_id",""),
+             int(data.get("voice_type", 1)), data.get("avatar",""), pid)
         )
     else:
         if not pid:
             pid = uuid.uuid4().hex[:12]
         cur.execute(
-            "INSERT INTO profiles (id,name,company,slogan,voice_id,avatar) VALUES (%s,%s,%s,%s,%s,%s)" if pg else
-            "INSERT INTO profiles (id,name,company,slogan,voice_id,avatar) VALUES (?,?,?,?,?,?)",
-            (pid, data["name"], data.get("company",""), data.get("slogan",""), data.get("voice_id",""), data.get("avatar",""))
+            "INSERT INTO profiles (id,name,company,slogan,voice_id,voice_type,avatar) VALUES (%s,%s,%s,%s,%s,%s,%s)" if pg else
+            "INSERT INTO profiles (id,name,company,slogan,voice_id,voice_type,avatar) VALUES (?,?,?,?,?,?,?)",
+            (pid, data["name"], data.get("company",""), data.get("slogan",""), data.get("voice_id",""),
+             int(data.get("voice_type", 1)), data.get("avatar",""))
         )
     conn.commit()
     conn.close()
@@ -211,11 +230,16 @@ def save_voice(data):
     cur = conn.cursor()
     pg = config.DATABASE_URL.startswith("postgres")
     if data.get("id"):
-        cur.execute("UPDATE voices SET name=%s, voice_id=%s WHERE id=%s" if pg else "UPDATE voices SET name=?, voice_id=? WHERE id=?",
-                   (data["name"], data["voice_id"], data["id"]))
+        cur.execute("UPDATE voices SET name=%s, voice_id=%s, type=%s WHERE id=%s" if pg else "UPDATE voices SET name=?, voice_id=?, type=? WHERE id=?",
+                   (data["name"], data["voice_id"], int(data.get("type", 1)), data["id"]))
     else:
-        cur.execute("INSERT INTO voices (name,voice_id) VALUES (%s,%s)" if pg else "INSERT INTO voices (name,voice_id) VALUES (?,?)",
-                   (data["name"], data["voice_id"]))
+        cur.execute("INSERT INTO voices (name,voice_id,type) VALUES (%s,%s,%s)" if pg else "INSERT INTO voices (name,voice_id,type) VALUES (?,?,?)",
+                   (data["name"], data["voice_id"], int(data.get("type", 1))))
+    cur.execute(
+        "UPDATE profiles SET voice_type=%s WHERE voice_id=%s" if pg else
+        "UPDATE profiles SET voice_type=? WHERE voice_id=?",
+        (int(data.get("type", 1)), data["voice_id"]),
+    )
     conn.commit()
     conn.close()
 
@@ -240,7 +264,7 @@ def save_video(data):
         data.get("title", ""), data.get("topic", ""), data.get("content", ""),
         data.get("profile_id", ""), data.get("narrator_name", ""),
         data.get("narrator_avatar", ""), data.get("company", ""),
-        data.get("slogan", ""), data.get("voice_id", ""),
+        data.get("slogan", ""), data.get("voice_id", ""), int(data.get("voice_type", 1)),
         data.get("background", ""), data.get("theme", ""),
         json.dumps(data.get("script", {}), ensure_ascii=False),
     )
@@ -248,15 +272,15 @@ def save_video(data):
         cur.execute("""
             INSERT INTO videos (
                 id, filename, type, title, topic, content, profile_id,
-                narrator_name, narrator_avatar, company, slogan, voice_id,
+                narrator_name, narrator_avatar, company, slogan, voice_id, voice_type,
                 background, theme, script_json
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT (filename) DO UPDATE SET
                 type=EXCLUDED.type, title=EXCLUDED.title, topic=EXCLUDED.topic,
                 content=EXCLUDED.content, profile_id=EXCLUDED.profile_id,
                 narrator_name=EXCLUDED.narrator_name,
                 narrator_avatar=EXCLUDED.narrator_avatar, company=EXCLUDED.company,
-                slogan=EXCLUDED.slogan, voice_id=EXCLUDED.voice_id,
+                slogan=EXCLUDED.slogan, voice_id=EXCLUDED.voice_id, voice_type=EXCLUDED.voice_type,
                 background=EXCLUDED.background, theme=EXCLUDED.theme,
                 script_json=EXCLUDED.script_json
         """, values)
@@ -264,15 +288,15 @@ def save_video(data):
         cur.execute("""
             INSERT INTO videos (
                 id, filename, type, title, topic, content, profile_id,
-                narrator_name, narrator_avatar, company, slogan, voice_id,
+                narrator_name, narrator_avatar, company, slogan, voice_id, voice_type,
                 background, theme, script_json
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(filename) DO UPDATE SET
                 type=excluded.type, title=excluded.title, topic=excluded.topic,
                 content=excluded.content, profile_id=excluded.profile_id,
                 narrator_name=excluded.narrator_name,
                 narrator_avatar=excluded.narrator_avatar, company=excluded.company,
-                slogan=excluded.slogan, voice_id=excluded.voice_id,
+                slogan=excluded.slogan, voice_id=excluded.voice_id, voice_type=excluded.voice_type,
                 background=excluded.background, theme=excluded.theme,
                 script_json=excluded.script_json
         """, values)

@@ -13,6 +13,16 @@ from config import config
 console = Console()
 
 
+def _log_server_progress(current: int, total: int, label: str):
+    """非交互日志环境无法渲染动态进度条，定期输出普通日志。"""
+    if console.is_terminal or total <= 0:
+        return
+    interval = max(1, min(10, total // 10))
+    if current == 1 or current == total or current % interval == 0:
+        percent = min(100, round(current / total * 100))
+        console.print(f"   {label}: {current}/{total} ({percent}%)")
+
+
 def record_with_selenium(html_path: str, output_dir: str, duration: float) -> str:
     console.print("📹 [cyan]Selenium + Firefox 录制...[/cyan]")
     if os.name == "nt":
@@ -61,13 +71,14 @@ def _record_with_x11(html_path: str, output_dir: str, duration: float) -> str:
             "if (typeof startTimeline === 'function') startTimeline();"
         )
 
-        wait_ms = int((duration + 1) * 1000)
+        wait_ms = int(duration * 1000)
         console.print(f"   ⏱️  录制 {duration:.0f}s...")
         with Progress() as progress:
             task = progress.add_task("[cyan]录制中...", total=wait_ms // 1000)
-            for _ in range(wait_ms // 1000):
+            for current in range(1, wait_ms // 1000 + 1):
                 time.sleep(1)
                 progress.advance(task)
+                _log_server_progress(current, wait_ms // 1000, "录制进度")
 
         # 先停止录屏，再关闭浏览器，避免把 Xvfb 的空白/X 画面录进视频尾部。
         ffmpeg_proc.terminate()
@@ -121,7 +132,7 @@ def _record_with_screenshots(html_path: str, output_dir: str, duration: float) -
             "if (typeof window.__stopTimeline === 'function') window.__stopTimeline();"
             "window.__READY=false;"
         )
-        record_duration = duration + 1
+        record_duration = duration
         total_frames = max(1, int(record_duration * fps))
         written_frames = 0
 
@@ -145,9 +156,12 @@ def _record_with_screenshots(html_path: str, output_dir: str, duration: float) -
                     "el.style.animation='none';"
                     "el.style.opacity='1';"
                     "el.style.transform='none';"
-                    "el.textContent=arguments[1];"
+                    "if(typeof window.__setSentenceText === 'function') "
+                    "window.__setSentenceText(arguments[1]);"
+                    "else el.textContent=arguments[1];"
                     "window._curScene=arguments[0];"
-                    "return el.textContent;",
+                    "return typeof window.__getSentenceText === 'function' "
+                    "? window.__getSentenceText() : el.textContent;",
                     idx, str(data[idx].get("text") or "") if idx < len(data) else "",
                 )
                 expected_text = str(data[idx].get("text") or "") if idx < len(data) else ""
@@ -163,7 +177,9 @@ def _record_with_screenshots(html_path: str, output_dir: str, duration: float) -
                 for phase_idx in range(6):
                     driver.execute_script(
                         "const el=document.getElementById('sentence');"
-                        "if(el)el.textContent=arguments[1];"
+                        "if(typeof window.__setSentenceText === 'function') "
+                        "window.__setSentenceText(arguments[1]);"
+                        "else if(el)el.textContent=arguments[1];"
                         "if (typeof window.__renderWave === 'function') "
                         "window.__renderWave(arguments[0]);",
                         phase_idx * 0.9, expected_text,
@@ -174,7 +190,9 @@ def _record_with_screenshots(html_path: str, output_dir: str, duration: float) -
                     )
                     phase_png = driver.get_screenshot_as_png()
                     phase_text = driver.execute_script(
-                        "return document.getElementById('sentence').textContent;"
+                        "return typeof window.__getSentenceText === 'function' "
+                        "? window.__getSentenceText() "
+                        ": document.getElementById('sentence').textContent;"
                     )
                     if phase_text != expected_text:
                         raise RuntimeError(
@@ -192,6 +210,7 @@ def _record_with_screenshots(html_path: str, output_dir: str, duration: float) -
                     written_frames += 1
                     page_frame += 1
                 progress.advance(task)
+                _log_server_progress(idx + 1, max(1, len(data)), "页面渲染进度")
 
         ffmpeg_proc.stdin.close()
         ffmpeg_proc.wait(timeout=max(30, int(duration)))
