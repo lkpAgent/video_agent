@@ -250,7 +250,8 @@ body{{width:{config.VIDEO_WIDTH}px;height:{config.VIDEO_HEIGHT}px;overflow:hidde
 
 /* 句子区：1/2 处 */
 #sentence-area{{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-  text-align:center;display:flex;flex-direction:column;align-items:center;width:100%}}
+  text-align:center;display:flex;flex-direction:column;align-items:center;
+  width:calc(100% - 280px);max-width:800px}}
 #sentence{{font-size:52px;font-weight:700;letter-spacing:3px;line-height:1.4;
   width:100%;max-width:100%;
   transition:opacity 0.4s;text-shadow:0 0 40px rgba(255,255,255,0.15)}}
