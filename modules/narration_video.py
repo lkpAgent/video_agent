@@ -189,6 +189,7 @@ def generate_narration_html(
     # 加 2 秒缓冲，确保视频不早于音频结束
     total = round(sum(a["duration"] for a in audio_data) + 2, 1)
     audio_json = json.dumps(audio_data, ensure_ascii=False)
+    title_json = json.dumps(title, ensure_ascii=False)
 
     # 头像处理
     avatar_b64 = ""
@@ -246,7 +247,8 @@ body{{width:{config.VIDEO_WIDTH}px;height:{config.VIDEO_HEIGHT}px;overflow:hidde
 #title{{position:absolute;top:29%;left:50%;transform:translate(-50%,-50%);
   font-size:48px;font-weight:700;letter-spacing:4px;color:rgba(255,255,255,0.7);
   text-align:center;width:calc(100% - 200px);max-width:880px;line-height:1.35;
-  white-space:normal;overflow-wrap:anywhere;word-break:break-word}}
+  white-space:normal;overflow-wrap:normal;word-break:normal}}
+.title-line{{display:block;white-space:nowrap}}
 
 /* 句子区：1/2 处 */
 #sentence-area{{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
@@ -293,7 +295,7 @@ body{{width:{config.VIDEO_WIDTH}px;height:{config.VIDEO_HEIGHT}px;overflow:hidde
 <div id="progress"></div>
 
 <div id="content">
-  <div id="title">{title}</div>
+  <div id="title"></div>
   <div id="sentence-area">
     <div id="sentence"></div>
   </div>
@@ -312,6 +314,7 @@ body{{width:{config.VIDEO_WIDTH}px;height:{config.VIDEO_HEIGHT}px;overflow:hidde
 
 <script>
 const data={audio_json};
+const titleText={title_json};
 const total={total};
 const barCount=50;
 const visualSwitchDelay=0.35;
@@ -339,6 +342,43 @@ const bars=document.querySelectorAll('.wave-bar');
 const prog=document.getElementById('progress');
 const timelineTimers=[];
 
+function balanceTitle(text){{
+  const titleEl=document.getElementById('title');
+  const chars=Array.from(String(text ?? '').trim());
+  titleEl.textContent=chars.join('');
+  if(chars.length<2)return;
+
+  const style=getComputedStyle(titleEl);
+  const canvas=document.createElement('canvas');
+  const ctx=canvas.getContext('2d');
+  ctx.font=style.font;
+  const letterSpacing=parseFloat(style.letterSpacing)||0;
+  const measure=line=>ctx.measureText(line).width+Math.max(0,Array.from(line).length-1)*letterSpacing;
+  const available=titleEl.clientWidth;
+  if(measure(chars.join(''))<=available)return;
+
+  let best=null;
+  for(let i=1;i<chars.length;i++){{
+    const first=chars.slice(0,i).join('').trimEnd();
+    const second=chars.slice(i).join('').trimStart();
+    if(!first||!second)continue;
+    const firstWidth=measure(first);
+    const secondWidth=measure(second);
+    if(firstWidth>available||secondWidth>available)continue;
+    const score=Math.abs(firstWidth-secondWidth);
+    if(!best||score<best.score)best={{first,second,score}};
+  }}
+  if(!best)return;
+
+  titleEl.replaceChildren();
+  [best.first,best.second].forEach(line=>{{
+    const lineEl=document.createElement('span');
+    lineEl.className='title-line';
+    lineEl.textContent=line;
+    titleEl.appendChild(lineEl);
+  }});
+}}
+
 function setSentenceText(text){{
   const rawText=String(text ?? '');
   senEl.replaceChildren();
@@ -353,6 +393,8 @@ function setSentenceText(text){{
 }}
 window.__setSentenceText=setSentenceText;
 window.__getSentenceText=()=>senEl.dataset.rawText || '';
+balanceTitle(titleText);
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>balanceTitle(titleText));
 
 function showSentence(idx){{
   if(idx>=data.length)return;
@@ -408,6 +450,7 @@ window.__renderAt=(seconds)=>{{
 
 window.__renderSentence=(idx)=>{{
   document.body.classList.add('deterministic-render');
+  balanceTitle(titleText);
   window._curScene=idx;
   setSentenceText(data[idx].text);
   senEl.classList.remove('sentence-enter');

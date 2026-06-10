@@ -4,8 +4,11 @@ import re
 from difflib import SequenceMatcher
 
 from openai import OpenAI
+from rich.console import Console
 
 from config import config
+
+console = Console()
 
 
 def _compact_text(content: str) -> str:
@@ -35,11 +38,11 @@ def _fallback_pages(content: str) -> list[str]:
     return [line.strip() for line in content.splitlines() if line.strip()]
 
 
-def format_narration_content(content: str) -> tuple[str, list[str], str]:
+def format_narration_content(content: str) -> tuple[str, list[str]]:
     """
     轻量纠错并将文案分组为视频页面。
 
-    返回：(以空行分隔的优化文案, 每页文案列表, 排版来源)
+    返回：(以空行分隔的优化文案, 每页文案列表)
     """
     original = content.strip()
     if not original:
@@ -77,7 +80,6 @@ def format_narration_content(content: str) -> tuple[str, list[str], str]:
 原文：
 {original}"""
 
-    source = "llm"
     try:
         client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL)
         response = client.chat.completions.create(
@@ -107,7 +109,8 @@ def format_narration_content(content: str) -> tuple[str, list[str], str]:
             raise ValueError("大模型排版对原文改动过大")
     except Exception as exc:
         pages = _fallback_pages(original)
-        source = f"fallback:{exc}"
+        console.print(f"[yellow]   大模型智能排版失败，已使用兜底排版：{exc}[/yellow]")
+        console.print(f"   兜底排版完成: {len(pages)} 个页面")
 
     # 大模型已经完成语义分页，后端不再按字数或行数二次重组。
-    return "\n\n".join(pages), pages, source
+    return "\n\n".join(pages), pages
