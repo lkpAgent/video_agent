@@ -83,6 +83,10 @@ def generate_narration_audio(sentences: list[str], voice_id: str = "", voice_typ
 
     audio_dir = os.path.join(config.TEMP_DIR, "narration_audio")
     os.makedirs(audio_dir, exist_ok=True)
+    for old_file in Path(audio_dir).glob("s_*.mp3"):
+        old_file.unlink(missing_ok=True)
+    full_audio_path = Path(audio_dir) / "narration_full.mp3"
+    full_audio_path.unlink(missing_ok=True)
 
     audio_data = []
     audio_files = []
@@ -520,7 +524,9 @@ def _record_narration_selenium(html_path: str, output_filename: str = None) -> s
 
     # 找所有逐句音频
     audio_dir = Path(config.TEMP_DIR).resolve() / "narration_audio"
-    audio_files = sorted(audio_dir.glob("s_*.mp3"))
+    audio_files = _read_narration_audio_files(html_path)
+    if not audio_files:
+        audio_files = sorted(audio_dir.glob("s_*.mp3"))
 
     if audio_files:
         console.print(f"🔊 找到 {len(audio_files)} 个音频片段，用 ffmpeg filter 合并...")
@@ -573,6 +579,26 @@ def _read_narration_total_duration(html_path: str) -> float:
         pass
     console.print("[yellow]⚠️ 无法读取口播真实时长，回退为 30 秒[/yellow]")
     return 30.0
+
+
+def _read_narration_audio_files(html_path: str) -> list[Path]:
+    """Read the exact audio segment paths embedded in the generated HTML."""
+    try:
+        html = Path(html_path).read_text(encoding="utf-8")
+        match = re.search(r"const data=(\[[\s\S]*?\]);\s*const titleText=", html)
+        if not match:
+            return []
+        data = json.loads(match.group(1))
+        files = []
+        for item in data:
+            path = item.get("path") if isinstance(item, dict) else ""
+            if path:
+                audio_path = Path(path)
+                if audio_path.exists():
+                    files.append(audio_path)
+        return files
+    except (OSError, ValueError, json.JSONDecodeError):
+        return []
 
 
 def _record_narration_playwright(html_path: str, output_filename: str = None) -> str:
@@ -647,7 +673,9 @@ def _record_narration_playwright(html_path: str, output_filename: str = None) ->
 
         # 合成音频：用逐句 s_*.mp3 直接合并，不再依赖 narration_full.mp3
         audio_dir = Path(config.TEMP_DIR).resolve() / "narration_audio"
-        audio_files = sorted(audio_dir.glob("s_*.mp3"))
+        audio_files = _read_narration_audio_files(html_path)
+        if not audio_files:
+            audio_files = sorted(audio_dir.glob("s_*.mp3"))
 
         if audio_files:
             mp4_path = str(Path(video_path).resolve())

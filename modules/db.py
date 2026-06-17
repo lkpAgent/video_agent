@@ -6,13 +6,21 @@
 import sqlite3
 import uuid
 import json
+import time
 from pathlib import Path
 from config import config
 
 
 def _get_pg_conn():
     import psycopg2
-    return psycopg2.connect(config.DATABASE_URL)
+    return psycopg2.connect(
+        config.DATABASE_URL,
+        connect_timeout=10,
+        keepalives=1,
+        keepalives_idle=30,
+        keepalives_interval=10,
+        keepalives_count=3,
+    )
 
 
 def _get_sqlite_conn():
@@ -28,6 +36,43 @@ def _get_conn():
     if url.startswith("postgres"):
         return _get_pg_conn()
     return _get_sqlite_conn()
+
+
+def _is_connection_error(exc: Exception) -> bool:
+    """判断异常是否属于可通过重连恢复的数据库连接错误。"""
+    if not config.DATABASE_URL.startswith("postgres"):
+        return False
+    try:
+        import psycopg2
+        if isinstance(exc, (psycopg2.OperationalError, psycopg2.InterfaceError)):
+            return True
+    except ImportError:
+        pass
+    message = str(exc).lower()
+    return any(text in message for text in (
+        "connection already closed",
+        "server closed the connection",
+        "connection not open",
+        "connection reset",
+        "terminating connection",
+    ))
+
+
+def _safe_rollback(conn):
+    """连接仍可用时才回滚，避免用二次异常覆盖原始断连。"""
+    try:
+        if conn is not None and not getattr(conn, "closed", False):
+            conn.rollback()
+    except Exception:
+        pass
+
+
+def _safe_close(conn):
+    try:
+        if conn is not None and not getattr(conn, "closed", False):
+            conn.close()
+    except Exception:
+        pass
 
 
 def _init_table(conn):
@@ -114,8 +159,10 @@ def _init_table(conn):
         else:
             cur.execute("ALTER TABLE profiles ADD COLUMN avatar TEXT DEFAULT ''")
         conn.commit()
-    except Exception:
-        pass
+    except Exception as exc:
+        _safe_rollback(conn)
+        if _is_connection_error(exc):
+            raise
 
     # voices 表
     if config.DATABASE_URL.startswith("postgres"):
@@ -144,8 +191,10 @@ def _init_table(conn):
             else:
                 cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} INTEGER DEFAULT 1")
             conn.commit()
-        except Exception:
-            conn.rollback()
+        except Exception as exc:
+            _safe_rollback(conn)
+            if _is_connection_error(exc):
+                raise
 
 
 def _row_to_dict(row, cur):
@@ -253,56 +302,74 @@ def delete_voice(vid):
     conn.close()
 
 
+def _save_video_once(data):
+    conn = None
+    try:
+        conn = _get_conn()
+        _init_table(conn)
+        cur = conn.cursor()
+        pg = config.DATABASE_URL.startswith("postgres")
+        video_id = data.get("id") or uuid.uuid4().hex[:16]
+        values = (
+            video_id, data["filename"], data.get("type", "science"),
+            data.get("title", ""), data.get("topic", ""), data.get("content", ""),
+            data.get("profile_id", ""), data.get("narrator_name", ""),
+            data.get("narrator_avatar", ""), data.get("company", ""),
+            data.get("slogan", ""), data.get("voice_id", ""), int(data.get("voice_type", 1)),
+            data.get("background", ""), data.get("theme", ""),
+            json.dumps(data.get("script", {}), ensure_ascii=False),
+        )
+        if pg:
+            cur.execute("""
+                INSERT INTO videos (
+                    id, filename, type, title, topic, content, profile_id,
+                    narrator_name, narrator_avatar, company, slogan, voice_id, voice_type,
+                    background, theme, script_json
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (filename) DO UPDATE SET
+                    type=EXCLUDED.type, title=EXCLUDED.title, topic=EXCLUDED.topic,
+                    content=EXCLUDED.content, profile_id=EXCLUDED.profile_id,
+                    narrator_name=EXCLUDED.narrator_name,
+                    narrator_avatar=EXCLUDED.narrator_avatar, company=EXCLUDED.company,
+                    slogan=EXCLUDED.slogan, voice_id=EXCLUDED.voice_id, voice_type=EXCLUDED.voice_type,
+                    background=EXCLUDED.background, theme=EXCLUDED.theme,
+                    script_json=EXCLUDED.script_json
+            """, values)
+        else:
+            cur.execute("""
+                INSERT INTO videos (
+                    id, filename, type, title, topic, content, profile_id,
+                    narrator_name, narrator_avatar, company, slogan, voice_id, voice_type,
+                    background, theme, script_json
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(filename) DO UPDATE SET
+                    type=excluded.type, title=excluded.title, topic=excluded.topic,
+                    content=excluded.content, profile_id=excluded.profile_id,
+                    narrator_name=excluded.narrator_name,
+                    narrator_avatar=excluded.narrator_avatar, company=excluded.company,
+                    slogan=excluded.slogan, voice_id=excluded.voice_id, voice_type=excluded.voice_type,
+                    background=excluded.background, theme=excluded.theme,
+                    script_json=excluded.script_json
+            """, values)
+        conn.commit()
+        return video_id
+    except Exception:
+        _safe_rollback(conn)
+        raise
+    finally:
+        _safe_close(conn)
+
+
 def save_video(data):
-    conn = _get_conn()
-    _init_table(conn)
-    cur = conn.cursor()
-    pg = config.DATABASE_URL.startswith("postgres")
-    video_id = data.get("id") or uuid.uuid4().hex[:16]
-    values = (
-        video_id, data["filename"], data.get("type", "science"),
-        data.get("title", ""), data.get("topic", ""), data.get("content", ""),
-        data.get("profile_id", ""), data.get("narrator_name", ""),
-        data.get("narrator_avatar", ""), data.get("company", ""),
-        data.get("slogan", ""), data.get("voice_id", ""), int(data.get("voice_type", 1)),
-        data.get("background", ""), data.get("theme", ""),
-        json.dumps(data.get("script", {}), ensure_ascii=False),
-    )
-    if pg:
-        cur.execute("""
-            INSERT INTO videos (
-                id, filename, type, title, topic, content, profile_id,
-                narrator_name, narrator_avatar, company, slogan, voice_id, voice_type,
-                background, theme, script_json
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            ON CONFLICT (filename) DO UPDATE SET
-                type=EXCLUDED.type, title=EXCLUDED.title, topic=EXCLUDED.topic,
-                content=EXCLUDED.content, profile_id=EXCLUDED.profile_id,
-                narrator_name=EXCLUDED.narrator_name,
-                narrator_avatar=EXCLUDED.narrator_avatar, company=EXCLUDED.company,
-                slogan=EXCLUDED.slogan, voice_id=EXCLUDED.voice_id, voice_type=EXCLUDED.voice_type,
-                background=EXCLUDED.background, theme=EXCLUDED.theme,
-                script_json=EXCLUDED.script_json
-        """, values)
-    else:
-        cur.execute("""
-            INSERT INTO videos (
-                id, filename, type, title, topic, content, profile_id,
-                narrator_name, narrator_avatar, company, slogan, voice_id, voice_type,
-                background, theme, script_json
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(filename) DO UPDATE SET
-                type=excluded.type, title=excluded.title, topic=excluded.topic,
-                content=excluded.content, profile_id=excluded.profile_id,
-                narrator_name=excluded.narrator_name,
-                narrator_avatar=excluded.narrator_avatar, company=excluded.company,
-                slogan=excluded.slogan, voice_id=excluded.voice_id, voice_type=excluded.voice_type,
-                background=excluded.background, theme=excluded.theme,
-                script_json=excluded.script_json
-        """, values)
-    conn.commit()
-    conn.close()
-    return video_id
+    """保存视频元数据；PostgreSQL 瞬时断连时自动重连重试。"""
+    attempts = 3 if config.DATABASE_URL.startswith("postgres") else 1
+    for attempt in range(1, attempts + 1):
+        try:
+            return _save_video_once(data)
+        except Exception as exc:
+            if attempt >= attempts or not _is_connection_error(exc):
+                raise
+            time.sleep(attempt)
 
 
 def list_videos():

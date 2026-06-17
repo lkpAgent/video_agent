@@ -28,6 +28,7 @@ body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:radial-gr
 .tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:9px;margin-right:4px;font-weight:600}
 .tag-n{background:rgba(99,102,241,0.2);color:#a5b4fc}
 .tag-s{background:rgba(168,85,247,0.2);color:#c4b5fd}
+.tag-g{background:rgba(34,197,94,0.2);color:#86efac}
 .main{flex:1 1 0;display:flex;flex-direction:column;overflow-y:auto;padding:30px 40px;background:linear-gradient(180deg,rgba(12,12,24,.7),rgba(8,8,18,.88))}
 .main h1{font-size:21px;font-weight:800;margin-bottom:18px;letter-spacing:.3px}
 .fg{margin-bottom:14px}
@@ -116,6 +117,7 @@ const BACKGROUNDS=[
 const MODES=[
   {key:"narration",name:"口播视频",icon:"🎤"},
   {key:"science",name:"科普视频",icon:"🔬"},
+  {key:"gallery",name:"图文展示",icon:"🖼️"},
 ];
 
 const api={profiles:()=>fetch(`${API_BASE}/video-api/profiles`).then(r=>r.json()),
@@ -127,6 +129,9 @@ const api={profiles:()=>fetch(`${API_BASE}/video-api/profiles`).then(r=>r.json()
            uploadAvatar:fd=>fetch(`${API_BASE}/video-api/upload/avatar`,{method:"POST",body:fd}).then(r=>r.json()),
            generate:(type,payload)=>fetch(`${API_BASE}/video-api/generate/`+type,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}).then(r=>r.json()),
            status:id=>fetch(`${API_BASE}/video-api/status/`+id).then(r=>r.json()),
+           uploadImages:fd=>fetch(`${API_BASE}/video-api/upload/images`,{method:"POST",body:fd}).then(r=>r.json()),
+           uploadBgm:fd=>fetch(`${API_BASE}/video-api/upload/bgm`,{method:"POST",body:fd}).then(r=>r.json()),
+           bgmList:()=>fetch(`${API_BASE}/video-api/bgm-list`).then(r=>r.json()),
 };
 
 // ====== Settings Modal ======
@@ -239,7 +244,7 @@ function App(){
   const generate=async(payload)=>{
     setGenerating(true);setStatus("启动中...");setImages([]);setOptimizedContent("");
     try{
-      const d=await api.generate(payload.type==="narration"?"narration":"science",payload);
+      const d=await api.generate(payload.type,payload);
       const id=setInterval(async()=>{
         const st=await api.status(d.task_id);
         setStatus(st.detail||st.status);if(st.images)setImages(st.images);if(st.title)setTitle(st.title);if(st.content)setOptimizedContent(st.content);
@@ -264,7 +269,7 @@ function App(){
       React.createElement("h2",null,"📼 视频列表"),
       React.createElement("div",{className:"video-list"},
         ...videos.map(v=>React.createElement("div",{key:v.name,className:"video-card"+(video===v.name?" selected":""),onClick:()=>play(v)},
-          React.createElement("div",{className:"v-title"},React.createElement("span",{className:"tag "+(v.type==="narration"?"tag-n":"tag-s")},v.type==="narration"?"口播":"科普"),v.title||v.name.replace(".mp4","")),
+          React.createElement("div",{className:"v-title"},React.createElement("span",{className:"tag "+(v.type==="narration"?"tag-n":v.type==="gallery"?"tag-g":"tag-s")},v.type==="narration"?"口播":v.type==="gallery"?"图文":"科普"),v.title||v.name.replace(".mp4","")),
           React.createElement("div",{className:"v-meta"},formatVideoTime(v.time)),
           React.createElement("div",{className:"v-meta v-meta-row"},
             React.createElement("span",{className:"v-author"},"👤 "+(v.narrator_name||"播主未记录")),
@@ -278,6 +283,7 @@ function App(){
     React.createElement("div",{className:"main"},
       React.createElement("h1",null,MODES.find(m=>m.key===mode)?.icon+" "+MODES.find(m=>m.key===mode)?.name),
       mode==="narration"?React.createElement(NarrationForm,{profiles,onGenerate:generate,generating,selectedVideo,optimizedContent}):
+      mode==="gallery"?React.createElement(GalleryForm,{profiles,onGenerate:generate,generating,selectedVideo}):
       React.createElement(ScienceForm,{profiles,onGenerate:generate,generating,selectedVideo}),
       generating?React.createElement("div",{className:"status"},React.createElement("span",{className:"spin"}),status):null
     ),
@@ -344,6 +350,90 @@ function NarrationForm({profiles,onGenerate,generating,selectedVideo,optimizedCo
       )
     ),
     React.createElement("button",{className:"btn",onClick:go,disabled:generating},generating?"生成中...":"🚀 生成视频")
+  );
+}
+
+// ====== Gallery Form ======
+function GalleryForm({profiles,onGenerate,generating,selectedVideo}){
+  const [topic,setTopic]=useState("");const [content,setContent]=useState("");
+  const [pid,setPid]=useState("");
+  const [galleryImages,setGalleryImages]=useState([]); // [{name,preview}]
+  const [uploadedPaths,setUploadedPaths]=useState([]);
+  const [bgmPath,setBgmPath]=useState("");const [bgmList,setBgmList]=useState([]);
+  const [uploading,setUploading]=useState(false);
+  const p=profiles.find(x=>x.id===pid)||{};
+
+  useEffect(()=>{api.bgmList().then(d=>setBgmList(d.bgm||[]))},[]);
+  useEffect(()=>{
+    if(!selectedVideo||selectedVideo.type!=="gallery")return;
+    setTopic(selectedVideo.topic||selectedVideo.title||"");
+    setContent(selectedVideo.content||"");
+    setPid(selectedVideo.profile_id||"");
+    setBgmPath(selectedVideo.background||"");
+  },[selectedVideo]);
+
+  const handleImageSelect=async(e)=>{
+    const files=Array.from(e.target.files||[]);
+    if(!files.length)return;
+    const previews=files.map(f=>({name:f.name,preview:URL.createObjectURL(f)}));
+    setGalleryImages(prev=>[...prev,...previews]);
+    setUploading(true);
+    const fd=new FormData();
+    files.forEach(f=>fd.append("files",f));
+    try{const r=await api.uploadImages(fd);setUploadedPaths(prev=>[...prev,...(r.images||[])]);}
+    catch(err){alert("图片上传失败: "+err.message)}
+    setUploading(false);
+    e.target.value="";
+  };
+
+  const removeImage=(idx)=>{
+    setGalleryImages(prev=>prev.filter((_,i)=>i!==idx));
+    setUploadedPaths(prev=>prev.filter((_,i)=>i!==idx));
+  };
+
+  const handleBgmUpload=async(e)=>{
+    const file=e.target.files[0];if(!file)return;
+    const fd=new FormData();fd.append("file",file);
+    try{const r=await api.uploadBgm(fd);setBgmPath(r.path||"");setBgmList(prev=>[...prev,{name:file.name,path:r.path,url:r.url}]);}
+    catch(err){alert("BGM上传失败: "+err.message)}
+    e.target.value="";
+  };
+
+  const go=()=>{
+    if(!pid||!p.id)return alert("请选择播主");
+    if(!topic.trim())return alert("请输入视频标题");
+    if(!content.trim())return alert("请输入视频文案内容");
+    if(uploadedPaths.length===0)return alert("请至少上传一张图片");
+    const payload={type:"gallery",title:topic.trim(),text:content.trim(),images:uploadedPaths,bgm:bgmPath,profile_id:p.id,name:p.name||"",company:p.company||"",slogan:p.slogan||"",avatar:p.avatar||"",voice_id:p.voice_id||"",voice_api_type:Number(p.voice_type||1)};
+    onGenerate(payload);
+  };
+
+  return React.createElement("div",null,
+    React.createElement("div",{className:"fg"},React.createElement("label",null,"👤 播主 / 音色"),
+      React.createElement("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
+        ...profiles.map(x=>React.createElement("div",{key:x.id,className:"chip"+(pid===x.id?" on":""),onClick:()=>setPid(x.id)},React.createElement("span",{className:"dot"}),x.name+(x.voice_id?" 🎙️":"")))
+      )
+    ),
+    React.createElement("div",{className:"fg"},React.createElement("label",null,"🎬 视频标题"),React.createElement("input",{value:topic,onChange:e=>setTopic(e.target.value),placeholder:"例如：我的2024年度回顾"})),
+    React.createElement("div",{className:"fg"},React.createElement("label",null,"📝 视频文案内容"),React.createElement("textarea",{value:content,onChange:e=>setContent(e.target.value),placeholder:"输入原始文字内容，生成时会由大模型按图片数量智能拆解为每页口播文案...",rows:8})),
+    React.createElement("div",{className:"fg"},React.createElement("label",null,"🖼️ 上传图片（"+galleryImages.length+" 张）"),
+      React.createElement("div",{style:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}},
+        ...galleryImages.map((img,i)=>React.createElement("div",{key:i,style:{position:"relative",width:80,height:100}},
+          React.createElement("img",{src:img.preview,style:{width:"100%",height:"100%",objectFit:"cover",borderRadius:6,border:"1px solid rgba(255,255,255,0.12)"}}),
+          React.createElement("button",{onClick:()=>removeImage(i),style:{position:"absolute",top:-6,right:-6,width:22,height:22,borderRadius:"50%",border:"none",background:"#ef4444",color:"#fff",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}},"✕")
+        )),
+        React.createElement("label",{style:{width:80,height:100,border:"2px dashed rgba(255,255,255,0.2)",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#9698b5",fontSize:24,transition:".18s"},onMouseOver:e=>e.target.style.borderColor="rgba(255,255,255,0.4)",onMouseOut:e=>e.target.style.borderColor="rgba(255,255,255,0.2)"},"+",React.createElement("input",{type:"file",accept:"image/*",multiple:true,onChange:handleImageSelect,style:{display:"none"}}))
+      ),
+      uploading?React.createElement("span",{style:{fontSize:11,color:"#9698b5"}},"⏳ 上传中..."):null
+    ),
+    React.createElement("div",{className:"fg"},React.createElement("label",null,"🎵 背景音乐（可选）"),
+      React.createElement("div",{style:{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}},
+        React.createElement("div",{className:"chip"+(bgmPath===""?" on":""),onClick:()=>setBgmPath("")},"🔇 无BGM"),
+        ...bgmList.map((b,i)=>React.createElement("div",{key:i,className:"chip"+(bgmPath===b.path?" on":""),onClick:()=>setBgmPath(b.path)},"🎵 "+b.name))
+      ),
+      React.createElement("label",{style:{display:"inline-block",padding:"6px 14px",border:"1px solid rgba(255,255,255,0.18)",borderRadius:6,fontSize:11,color:"#9698b5",cursor:"pointer",transition:".18s"},onMouseOver:e=>{e.target.style.borderColor="rgba(255,255,255,0.35)";e.target.style.color="#fff"},onMouseOut:e=>{e.target.style.borderColor="rgba(255,255,255,0.18)";e.target.style.color="#9698b5"}},"📁 上传BGM",React.createElement("input",{type:"file",accept:"audio/*",onChange:handleBgmUpload,style:{display:"none"}}))
+    ),
+    React.createElement("button",{className:"btn",onClick:go,disabled:generating||uploading},generating?"生成中...":uploading?"图片上传中...":"🚀 生成视频")
   );
 }
 

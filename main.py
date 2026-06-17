@@ -25,6 +25,7 @@ from modules.script_generator import generate_script
 from modules.tts import generate_audio
 from modules.image_gen import generate_scene_images
 from modules.video_builder import build_video
+from modules.gallery_video import build_gallery_video
 
 console = Console()
 
@@ -36,6 +37,114 @@ BANNER = """
 ╚══════════════════════════════════════════════╝
 [/bold cyan]
 """
+
+
+# ==================== 图文展示模式 ====================
+def _run_gallery_mode(args):
+    """图文展示模式：图片 + 文字 → LLM拆解 → TTS配音 → 图文动效视频"""
+    from modules.gallery_video import build_gallery_video
+
+    # 图片输入
+    images = args.images or []
+    if not images:
+        # 交互输入图片路径
+        console.print("[bold yellow]🖼️  请输入图片路径（空格分隔，回车确认）:[/bold yellow]")
+        raw = console.input("> ").strip()
+        images = [p.strip().strip('"') for p in raw.split() if p.strip()]
+
+    if not images:
+        console.print("[red]至少需要一张图片[/red]")
+        return
+
+    # 验证图片
+    valid_images = []
+    for p in images:
+        if os.path.exists(p):
+            valid_images.append(p)
+        else:
+            console.print(f"[yellow]⚠️  图片不存在，已跳过: {p}[/yellow]")
+
+    if not valid_images:
+        console.print("[red]没有有效的图片文件[/red]")
+        return
+
+    console.print(f"📸 有效图片: [cyan]{len(valid_images)}[/cyan] 张")
+
+    # 文字内容
+    text = args.text
+    if not text:
+        console.print("[bold yellow]📝 请输入文字内容（可多行，输入空行结束）:[/bold yellow]")
+        lines = []
+        while True:
+            line = console.input().strip()
+            if not line:
+                break
+            lines.append(line)
+        text = "\n".join(lines)
+
+    if not text:
+        console.print("[red]文字内容不能为空[/red]")
+        return
+
+    # 标题
+    title = args.topic or "图文展示"
+
+    # BGM
+    bgm = args.bgm or ""
+    if not bgm:
+        bgm_input = console.input(
+            "[bold yellow]🎵 背景音乐路径（可选，回车跳过）: [/bold yellow]"
+        ).strip()
+        if bgm_input and os.path.exists(bgm_input):
+            bgm = bgm_input
+
+    if args.voice:
+        config.TTS_VOICE = args.voice
+
+    # 生成
+    try:
+        video_path = build_gallery_video(
+            images=valid_images,
+            text_content=text,
+            title=title,
+            bgm_path=bgm,
+            voice_id=args.voice or "",
+            voice_type=args.voice_type,
+            output_filename=args.output,
+            record=not args.no_record
+        )
+
+        if Path(video_path).suffix.lower() in (".mp4", ".webm"):
+            from modules.db import save_video
+            scenes_data = []  # 从文件读取已保存的场景信息
+            save_video({
+                "filename": Path(video_path).name,
+                "type": "gallery",
+                "title": title,
+                "topic": title,
+                "content": text,
+                "narrator_name": args.name,
+                "narrator_avatar": args.avatar or "",
+                "company": args.company,
+                "slogan": args.slogan,
+                "voice_id": args.voice or config.TTS_VOICE,
+                "voice_type": args.voice_type,
+                "background": bgm,
+            })
+
+        console.print()
+        console.print(Panel.fit(
+            f"[bold green]✅ 图文展示视频生成完成！[/bold green]\n\n"
+            f"📁 输出: [cyan]{video_path}[/cyan]\n"
+            f"🖼️  图片: [yellow]{len(valid_images)} 张[/yellow]\n"
+            f"🎵 BGM: [dim]{bgm or '无'}[/dim]",
+            border_style="green"
+        ))
+
+    except Exception as e:
+        console.print(f"[red]生成失败: {e}[/red]")
+        import traceback
+        traceback.print_exc()
 
 
 # ==================== 口播叙述模式 ====================
@@ -228,8 +337,8 @@ def main():
     )
 
     parser.add_argument("topic", nargs="?", help="视频主题（科普模式）")
-    parser.add_argument("--mode", type=str, choices=["science", "narration"],
-                        default="science", help="视频模式: science(默认), narration(口播)")
+    parser.add_argument("--mode", type=str, choices=["science", "narration", "gallery"],
+                        default="science", help="视频模式: science(默认), narration(口播), gallery(图文展示)")
     parser.add_argument("--text", type=str, help="[口播] 文案内容（直接提供，跳过LLM生成）")
     parser.add_argument("--sentences", "-n", type=int, default=0,
                         help="[口播] LLM 生成的句子数（默认交互提问）")
@@ -246,9 +355,17 @@ def main():
     parser.add_argument("--output", type=str, help="输出文件名")
     parser.add_argument("--search-only", action="store_true", help="仅搜索")
     parser.add_argument("--custom-instruction", type=str, help="额外创作指令")
+    # 图文展示模式
+    parser.add_argument("--images", type=str, nargs="*", help="[gallery] 图片路径列表")
+    parser.add_argument("--bgm", type=str, help="[gallery] 背景音乐文件路径")
 
     args = parser.parse_args()
     console.print(BANNER)
+
+    # ==================== 图文展示模式 ====================
+    if args.mode == "gallery":
+        _run_gallery_mode(args)
+        return
 
     # ==================== 口播模式 ====================
     if args.mode == "narration":

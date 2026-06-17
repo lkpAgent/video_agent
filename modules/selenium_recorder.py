@@ -104,7 +104,12 @@ def _record_with_x11(html_path: str, output_dir: str, duration: float) -> str:
 
 
 def _record_with_screenshots(html_path: str, output_dir: str, duration: float) -> str:
-    """Windows 使用 Firefox 无头截图流录制，保持与服务器相同的渲染器。"""
+    """Windows 使用 Firefox 无头截图流录制，保持与服务器相同的渲染器。
+    
+    自动检测视频类型：
+    - 口播模式：使用确定性逐页渲染（wave_frames）
+    - 科普/图文模式：启动 JS 时间线，按帧率连续截图
+    """
     webm_path = os.path.join(output_dir, "recorded.webm")
     fps = config.VIDEO_FPS
     driver = _create_firefox_driver(headless=True)
@@ -121,96 +126,20 @@ def _record_with_screenshots(html_path: str, output_dir: str, duration: float) -
             "-pix_fmt", "yuv420p", "-y", webm_path
         ], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        timeline = driver.execute_script(
-            "return {"
-            "data: window.__timelineData || [],"
-            "total: window.__timelineTotal || 0,"
-            "delay: window.__visualSwitchDelay || 0"
-            "};"
+        # 检测视频类型
+        video_type = driver.execute_script(
+            "if (window.__timelineData && window.__timelineData.length) return 'narration';"
+            "if (window.scenesData && window.scenesData.length) return 'gallery';"
+            "if (window.scenes && window.scenes.length) return 'science';"
+            "return 'unknown';"
         )
-        driver.execute_script(
-            "if (typeof window.__stopTimeline === 'function') window.__stopTimeline();"
-            "window.__READY=false;"
-        )
-        record_duration = duration
-        total_frames = max(1, int(record_duration * fps))
-        written_frames = 0
+        console.print(f"   [dim]检测到视频类型: {video_type}[/dim]")
 
-        data = timeline.get("data") or []
-        delay = float(timeline.get("delay") or 0)
-        starts = [0.0]
-        elapsed = 0.0
-        for item in data[:-1]:
-            elapsed += float(item.get("duration") or 0)
-            starts.append(elapsed + delay)
-        starts.append(record_duration)
-
-        with Progress() as progress:
-            task = progress.add_task("[cyan]录制中...", total=max(1, len(data)))
-            for idx in range(max(1, len(data))):
-                rendered_text = driver.execute_script(
-                    "if (typeof window.__renderSentence === 'function') "
-                    "return window.__renderSentence(arguments[0]);"
-                    "const el=document.getElementById('sentence');"
-                    "if(!el)return '';"
-                    "el.style.animation='none';"
-                    "el.style.opacity='1';"
-                    "el.style.transform='none';"
-                    "if(typeof window.__setSentenceText === 'function') "
-                    "window.__setSentenceText(arguments[1]);"
-                    "else el.textContent=arguments[1];"
-                    "window._curScene=arguments[0];"
-                    "return typeof window.__getSentenceText === 'function' "
-                    "? window.__getSentenceText() : el.textContent;",
-                    idx, str(data[idx].get("text") or "") if idx < len(data) else "",
-                )
-                expected_text = str(data[idx].get("text") or "") if idx < len(data) else ""
-                if rendered_text != expected_text:
-                    raise RuntimeError(
-                        f"第 {idx + 1} 页渲染校验失败：期望 {expected_text!r}，实际 {rendered_text!r}"
-                    )
-                driver.execute_async_script(
-                    "const done=arguments[arguments.length-1];"
-                    "requestAnimationFrame(()=>requestAnimationFrame(done));"
-                )
-                wave_frames = []
-                for phase_idx in range(6):
-                    driver.execute_script(
-                        "const el=document.getElementById('sentence');"
-                        "if(typeof window.__setSentenceText === 'function') "
-                        "window.__setSentenceText(arguments[1]);"
-                        "else if(el)el.textContent=arguments[1];"
-                        "if (typeof window.__renderWave === 'function') "
-                        "window.__renderWave(arguments[0]);",
-                        phase_idx * 0.9, expected_text,
-                    )
-                    driver.execute_async_script(
-                        "const done=arguments[arguments.length-1];"
-                        "requestAnimationFrame(()=>requestAnimationFrame(done));"
-                    )
-                    phase_png = driver.get_screenshot_as_png()
-                    phase_text = driver.execute_script(
-                        "return typeof window.__getSentenceText === 'function' "
-                        "? window.__getSentenceText() "
-                        ": document.getElementById('sentence').textContent;"
-                    )
-                    if phase_text != expected_text:
-                        raise RuntimeError(
-                            f"第 {idx + 1} 页音波帧正文闪回：期望 {expected_text!r}，实际 {phase_text!r}"
-                        )
-                    wave_frames.append(phase_png)
-                target_frames = total_frames if idx == len(data) - 1 else min(
-                    total_frames, int(starts[idx + 1] * fps)
-                )
-                page_frame = 0
-                frames_per_wave_phase = max(1, fps // 6)
-                while written_frames < target_frames:
-                    wave_idx = (page_frame // frames_per_wave_phase) % len(wave_frames)
-                    ffmpeg_proc.stdin.write(wave_frames[wave_idx])
-                    written_frames += 1
-                    page_frame += 1
-                progress.advance(task)
-                _log_server_progress(idx + 1, max(1, len(data)), "页面渲染进度")
+        if video_type == "narration":
+            _record_narration_frames(driver, ffmpeg_proc, fps, duration, webm_path)
+        else:
+            # 科普/图文模式：启动时间线 + 连续截图
+            _record_timeline_frames(driver, ffmpeg_proc, fps, duration)
 
         ffmpeg_proc.stdin.close()
         ffmpeg_proc.wait(timeout=max(30, int(duration)))
@@ -226,6 +155,120 @@ def _record_with_screenshots(html_path: str, output_dir: str, duration: float) -
         return webm_path
     console.print("[red]录制失败[/red]")
     return ""
+
+
+def _record_timeline_frames(driver, ffmpeg_proc, fps: int, duration: float):
+    """科普/图文模式：启动 JS 时间线，按帧率连续截图"""
+    total_frames = int(duration * fps)
+    driver.execute_script("window.__READY = true;")
+    
+    with Progress() as progress:
+        task = progress.add_task("[cyan]录制中...", total=total_frames)
+        frame_interval = 1.0 / fps
+        for i in range(total_frames):
+            start_tick = time.perf_counter()
+            png = driver.get_screenshot_as_png()
+            ffmpeg_proc.stdin.write(png)
+            elapsed = time.perf_counter() - start_tick
+            sleep_time = frame_interval - elapsed
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+            progress.advance(task)
+            _log_server_progress(i + 1, total_frames, "录制帧")
+
+
+def _record_narration_frames(driver, ffmpeg_proc, fps: int, duration: float, webm_path: str):
+    """口播模式：确定性逐页渲染（保留原有逻辑）"""
+    timeline = driver.execute_script(
+        "return {"
+        "data: window.__timelineData || [],"
+        "total: window.__timelineTotal || 0,"
+        "delay: window.__visualSwitchDelay || 0"
+        "};"
+    )
+    driver.execute_script(
+        "if (typeof window.__stopTimeline === 'function') window.__stopTimeline();"
+        "window.__READY=false;"
+    )
+    record_duration = duration
+    total_frames = max(1, int(record_duration * fps))
+    written_frames = 0
+
+    data = timeline.get("data") or []
+    delay = float(timeline.get("delay") or 0)
+    starts = [0.0]
+    elapsed = 0.0
+    for item in data[:-1]:
+        elapsed += float(item.get("duration") or 0)
+        starts.append(elapsed + delay)
+    starts.append(record_duration)
+
+    with Progress() as progress:
+        task = progress.add_task("[cyan]录制中...", total=max(1, len(data)))
+        for idx in range(max(1, len(data))):
+            rendered_text = driver.execute_script(
+                "if (typeof window.__renderSentence === 'function') "
+                "return window.__renderSentence(arguments[0]);"
+                "const el=document.getElementById('sentence');"
+                "if(!el)return '';"
+                "el.style.animation='none';"
+                "el.style.opacity='1';"
+                "el.style.transform='none';"
+                "if(typeof window.__setSentenceText === 'function') "
+                "window.__setSentenceText(arguments[1]);"
+                "else el.textContent=arguments[1];"
+                "window._curScene=arguments[0];"
+                "return typeof window.__getSentenceText === 'function' "
+                "? window.__getSentenceText() : el.textContent;",
+                idx, str(data[idx].get("text") or "") if idx < len(data) else "",
+            )
+            expected_text = str(data[idx].get("text") or "") if idx < len(data) else ""
+            if rendered_text != expected_text:
+                raise RuntimeError(
+                    f"第 {idx + 1} 页渲染校验失败：期望 {expected_text!r}，实际 {rendered_text!r}"
+                )
+            driver.execute_async_script(
+                "const done=arguments[arguments.length-1];"
+                "requestAnimationFrame(()=>requestAnimationFrame(done));"
+            )
+            wave_frames = []
+            for phase_idx in range(6):
+                driver.execute_script(
+                    "const el=document.getElementById('sentence');"
+                    "if(typeof window.__setSentenceText === 'function') "
+                    "window.__setSentenceText(arguments[1]);"
+                    "else if(el)el.textContent=arguments[1];"
+                    "if (typeof window.__renderWave === 'function') "
+                    "window.__renderWave(arguments[0]);",
+                    phase_idx * 0.9, expected_text,
+                )
+                driver.execute_async_script(
+                    "const done=arguments[arguments.length-1];"
+                    "requestAnimationFrame(()=>requestAnimationFrame(done));"
+                )
+                phase_png = driver.get_screenshot_as_png()
+                phase_text = driver.execute_script(
+                    "return typeof window.__getSentenceText === 'function' "
+                    "? window.__getSentenceText() "
+                    ": (document.getElementById('sentence')||{}).textContent||'';"
+                )
+                if phase_text != expected_text:
+                    raise RuntimeError(
+                        f"第 {idx + 1} 页音波帧正文闪回：期望 {expected_text!r}，实际 {phase_text!r}"
+                    )
+                wave_frames.append(phase_png)
+            target_frames = total_frames if idx == len(data) - 1 else min(
+                total_frames, int(starts[idx + 1] * fps)
+            )
+            page_frame = 0
+            frames_per_wave_phase = max(1, fps // 6)
+            while written_frames < target_frames:
+                wave_idx = (page_frame // frames_per_wave_phase) % len(wave_frames)
+                ffmpeg_proc.stdin.write(wave_frames[wave_idx])
+                written_frames += 1
+                page_frame += 1
+            progress.advance(task)
+            _log_server_progress(idx + 1, max(1, len(data)), "页面渲染进度")
 
 
 def _create_firefox_driver(headless: bool):

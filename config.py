@@ -67,7 +67,7 @@ class Config:
     ELEVENLABS_MODEL: str = os.getenv("ELEVENLABS_MODEL", "eleven_multilingual_v2")
 
     # ======== 视频配置 ========
-    # 录制引擎: selenium(默认，Firefox) / playwright
+    # 录制引擎: selenium(Firefox) / playwright / hyperframes(HF CLI)
     RECORD_ENGINE: str = os.getenv("RECORD_ENGINE", "selenium")
     RECORD_BROWSER: str = os.getenv("RECORD_BROWSER", "firefox")
     GECKODRIVER_PATH: str = os.getenv("GECKODRIVER_PATH", "./tools/geckodriver.exe" if os.name == "nt" else "")
@@ -80,6 +80,12 @@ class Config:
     VIDEO_END_HOLD_SECONDS: float = float(os.getenv("VIDEO_END_HOLD_SECONDS", "2"))
     # 视频色温风格："dark"/"light"/"warm"
     VIDEO_THEME: str = os.getenv("VIDEO_THEME", "dark")
+
+    # ======== 图文展示视频配置 ========
+    # 背景音乐默认目录
+    BGM_DIR: str = os.getenv("BGM_DIR", "./static/bgm")
+    # 默认背景音乐音量 (0.0~1.0)
+    BGM_VOLUME: float = float(os.getenv("BGM_VOLUME", "0.25"))
 
     # ======== 搜索配置 ========
     # 搜索引擎: duckduckgo(免费) / tavily(需API Key，更精准)

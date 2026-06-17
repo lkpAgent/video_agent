@@ -63,6 +63,17 @@ def _set_task(task_id, status, detail=""):
         tasks[task_id]["detail"] = detail
 
 
+def _save_video_metadata(data):
+    """元数据保存失败不应让已经生成成功的视频任务失败。"""
+    try:
+        from modules.db import save_video
+        save_video(data)
+        return True
+    except Exception as exc:
+        console.print(f"[yellow]⚠️ 视频已生成，但元数据保存失败: {exc}[/yellow]")
+        return False
+
+
 def _generate_science_video(task_id, topic, voice, voice_api_type, theme, name, avatar, company, slogan, profile_id=""):
     try:
         # 本次生成的独立临时目录
@@ -108,8 +119,7 @@ def _generate_science_video(task_id, topic, voice, voice_api_type, theme, name, 
         from modules.video_builder import build_video
         filename = _safe_video_name(topic)
         video_path = build_video(script, audio_path, image_paths, output_filename=filename)
-        from modules.db import save_video
-        save_video({
+        _save_video_metadata({
             "filename": Path(video_path).name,
             "type": "science",
             "title": script.get("title", topic),
@@ -132,6 +142,81 @@ def _generate_science_video(task_id, topic, voice, voice_api_type, theme, name, 
         tasks[task_id].update({
             "status": "done", "detail": "✅ 完成！",
             "video": Path(video_path).name, "title": script.get("title", topic)
+        })
+    except Exception as e:
+        import traceback
+        console.print(f"[red]❌ {e}[/red]")
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        tasks[task_id].update({"status": "error", "detail": f"❌ {e}"})
+    finally:
+        config.TEMP_DIR = orig_temp
+
+
+def _generate_gallery_video(task_id, images, text, title, bgm, voice, voice_api_type, name, avatar, company, slogan, profile_id=""):
+    try:
+        work_dir = Path(config.TEMP_DIR) / task_id
+        work_dir.mkdir(parents=True, exist_ok=True)
+        orig_temp = config.TEMP_DIR
+        config.TEMP_DIR = str(work_dir)
+
+        if not images or not text:
+            raise ValueError("图片和文字内容不能为空")
+
+        _set_task(task_id, "scripting", "📝 LLM 拆解文案...")
+        from modules.gallery_video import (
+            llm_breakdown_gallery_text, generate_gallery_audio,
+            generate_gallery_html, record_gallery_video,
+            _check_hyperframes_available, _record_hyperframes
+        )
+
+        # Step 1: LLM 拆解
+        scenes = llm_breakdown_gallery_text(text, len(images), title)
+
+        # Step 2: 配音
+        _set_task(task_id, "audio", f"🔊 生成配音 (1/{len(scenes)})...")
+        scenes = generate_gallery_audio(scenes, voice, voice_api_type)
+
+        filename = _safe_video_name(title or "gallery")
+        engine = config.RECORD_ENGINE.lower()
+        if engine in ("hyperframes", "hf") and _check_hyperframes_available():
+            _set_task(task_id, "recording", "🎬 HyperFrames 逐帧渲染中...")
+            video_path = _record_hyperframes(scenes, images, title, bgm, filename, str(work_dir))
+            if not video_path:
+                console.print("[yellow]⚠️  HyperFrames 渲染失败，回退到普通录制引擎[/yellow]")
+                _set_task(task_id, "recording", "⚠️ HyperFrames 超时，回退到普通录制...")
+                html_path = generate_gallery_html(scenes, images, title, bgm)
+                video_path = record_gallery_video(html_path, scenes, bgm, filename)
+        else:
+            if engine in ("hyperframes", "hf"):
+                console.print("[yellow]HyperFrames 不可用，回退到普通录制引擎[/yellow]")
+            _set_task(task_id, "html", "📄 生成 HTML 页面...")
+            html_path = generate_gallery_html(scenes, images, title, bgm)
+            _set_task(task_id, "recording", "🎥 录制视频 + 合成音频...")
+            video_path = record_gallery_video(html_path, scenes, bgm, filename)
+
+        if not video_path:
+            raise RuntimeError("图文视频渲染失败")
+
+        metadata_saved = _save_video_metadata({
+            "filename": Path(video_path).name,
+            "type": "gallery",
+            "title": title,
+            "topic": title,
+            "content": text,
+            "profile_id": profile_id,
+            "narrator_name": name,
+            "narrator_avatar": avatar,
+            "company": company,
+            "slogan": slogan,
+            "voice_id": voice,
+            "voice_type": voice_api_type,
+            "background": bgm,
+        })
+
+        tasks[task_id].update({
+            "status": "done",
+            "detail": "✅ 完成！" if metadata_saved else "✅ 视频完成，数据库元数据保存失败",
+            "video": Path(video_path).name, "title": title
         })
     except Exception as e:
         import traceback
@@ -235,8 +320,7 @@ def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, 
             company=company or "", slogan=slogan or "")
         filename = _safe_video_name(title)
         video_path = record_narration_video(html_path, filename)
-        from modules.db import save_video
-        save_video({
+        _save_video_metadata({
             "filename": Path(video_path).name,
             "type": "narration",
             "title": title,
@@ -357,6 +441,66 @@ async def api_science(req: Request, bg: BackgroundTasks):
                 d.get("profile_id",""))
     return {"task_id": tid}
 
+@app.post("/video-api/generate/gallery")
+async def api_gallery(req: Request, bg: BackgroundTasks):
+    d = await req.json()
+    tid = uuid.uuid4().hex[:12]
+    tasks[tid] = {"id": tid, "status": "starting", "detail": "启动中...", "type": "gallery",
+                  "topic": d.get("title",""), "created": datetime.now().isoformat()}
+    bg.add_task(_generate_gallery_video, tid,
+                d.get("images",[]), d.get("text",""), d.get("title","图文展示"),
+                d.get("bgm",""), d.get("voice","") or d.get("voice_id",""),
+                int(d.get("voice_api_type", 1)),
+                d.get("name",""), d.get("avatar",""), d.get("company",""), d.get("slogan",""),
+                d.get("profile_id",""))
+    return {"task_id": tid}
+
+
+@app.post("/video-api/upload/images")
+async def api_upload_images(files: list[UploadFile] = File(...)):
+    """批量上传图片，返回路径列表"""
+    import uuid as _uuid
+    upload_dir = Path(config.TEMP_DIR) / "gallery_images"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for file in files:
+        ext = Path(file.filename).suffix or ".png"
+        filename = f"img_{_uuid.uuid4().hex[:8]}{ext}"
+        filepath = upload_dir / filename
+        with open(filepath, "wb") as f:
+            f.write(await file.read())
+        paths.append(str(filepath.resolve()))
+    return {"images": paths, "ok": True}
+
+
+@app.post("/video-api/upload/bgm")
+async def api_upload_bgm(file: UploadFile = File(...)):
+    """上传背景音乐"""
+    import uuid as _uuid
+    ext = Path(file.filename).suffix or ".mp3"
+    filename = f"bgm_{_uuid.uuid4().hex[:8]}{ext}"
+    bgm_dir = Path(config.BGM_DIR)
+    bgm_dir.mkdir(parents=True, exist_ok=True)
+    filepath = bgm_dir / filename
+    with open(filepath, "wb") as f:
+        f.write(await file.read())
+    return {"url": f"/static/bgm/{filename}", "path": str(filepath.resolve()), "ok": True}
+
+
+@app.get("/video-api/bgm-list")
+async def api_list_bgm():
+    """列出可用背景音乐"""
+    bgm_dir = Path(config.BGM_DIR)
+    if not bgm_dir.exists():
+        return {"bgm": []}
+    files = []
+    for f in sorted(bgm_dir.iterdir()):
+        if f.suffix.lower() in (".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac"):
+            files.append({"name": f.name, "path": str(f.resolve()),
+                          "url": f"/static/bgm/{f.name}"})
+    return {"bgm": files}
+
+
 @app.post("/video-api/generate/narration")
 async def api_narration(req: Request, bg: BackgroundTasks):
     d = await req.json()
@@ -398,6 +542,12 @@ async def api_videos():
     return {"videos": vids}
 
 app.mount("/output", StaticFiles(directory=str(VIDEO_OUTPUT)), name="output")
+
+# BGM 静态目录（必须在 /static 之前挂载）
+_bgm_dir = Path(config.BGM_DIR)
+_bgm_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/static/bgm", StaticFiles(directory=str(_bgm_dir)), name="bgm")
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 if __name__ == "__main__":
