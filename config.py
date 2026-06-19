@@ -19,6 +19,12 @@ class Config:
     LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4o")
     LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "8192"))
 
+    # ======== 图片理解 / 多模态 LLM 配置 ========
+    VISION_LLM_API_KEY: str = os.getenv("VISION_LLM_API_KEY", "")
+    VISION_LLM_BASE_URL: str = os.getenv("VISION_LLM_BASE_URL", "https://api.openai.com/v1")
+    VISION_LLM_MODEL: str = os.getenv("VISION_LLM_MODEL", "gpt-4o-mini")
+    VISION_LLM_TIMEOUT: int = int(os.getenv("VISION_LLM_TIMEOUT", "45"))
+
     # ======== 图片生成配置 ========
     IMAGE_GEN_ENABLED: bool = os.getenv("IMAGE_GEN_ENABLED", "true").lower() == "true"
     # 提供商: openai / doubao

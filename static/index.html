@@ -3,9 +3,8 @@
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI 视频生成智能体</title>
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="./vendor/react.production.min.js"></script>
+<script src="./vendor/react-dom.production.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#080812;--panel:#10101e;--panel-2:#151527;--surface:#1a1a2c;--border:rgba(167,170,255,.16);--text:#f4f4fb;--muted:#aaaac2;--subtle:#7f819c;--primary:#7c6cff;--primary-2:#b44cff}
@@ -29,6 +28,7 @@ body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:radial-gr
 .tag-n{background:rgba(99,102,241,0.2);color:#a5b4fc}
 .tag-s{background:rgba(168,85,247,0.2);color:#c4b5fd}
 .tag-g{background:rgba(34,197,94,0.2);color:#86efac}
+.tag-d{background:rgba(14,165,233,0.2);color:#7dd3fc}
 .main{flex:1 1 0;display:flex;flex-direction:column;overflow-y:auto;padding:30px 40px;background:linear-gradient(180deg,rgba(12,12,24,.7),rgba(8,8,18,.88))}
 .main h1{font-size:21px;font-weight:800;margin-bottom:18px;letter-spacing:.3px}
 .fg{margin-bottom:14px}
@@ -69,6 +69,19 @@ body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:radial-gr
 .imgs img{width:56px;height:32px;object-fit:cover;border-radius:3px;border:1px solid rgba(255,255,255,0.08)}
 .video-details{padding:12px 18px;border-top:1px solid rgba(255,255,255,0.05);font-size:11px;color:rgba(255,255,255,0.55);max-height:220px;overflow-y:auto}
 .video-details strong{color:#a5b4fc}.video-details .copy{margin-top:8px;white-space:pre-wrap;line-height:1.65;color:rgba(255,255,255,0.7)}
+.script-review{padding:14px 18px;border-top:1px solid rgba(255,255,255,.08);background:rgba(124,108,255,.055);max-height:52vh;overflow-y:auto}
+.script-review-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.script-review-title{font-size:13px;font-weight:800;color:#fff}
+.script-review-count{font-size:11px;color:#c4b5fd;background:rgba(124,108,255,.18);border:1px solid rgba(124,108,255,.35);border-radius:999px;padding:4px 9px;white-space:nowrap}
+.script-page{padding:10px 0;border-top:1px solid rgba(255,255,255,.07)}
+.script-page:first-of-type{border-top:0}
+.script-page h4{font-size:12px;color:#f4f4fb;margin-bottom:6px;line-height:1.35}
+.script-page .bullets{font-size:11px;color:#a5b4fc;line-height:1.55;margin-bottom:5px}
+.script-page .narration{font-size:11px;color:rgba(255,255,255,.68);line-height:1.65;white-space:pre-wrap}
+.script-review textarea{width:100%;min-height:74px;margin-top:10px;padding:10px 12px;background:#10101e;border:1px solid rgba(180,183,220,.28);border-radius:8px;color:#fff;font-size:12px;font-family:inherit;resize:vertical;outline:none}
+.script-review-actions{display:flex;gap:8px;margin-top:8px}
+.script-review-actions .btn{margin-top:0}
+.btn-secondary{background:rgba(255,255,255,.08)}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:100}
 .modal{background:#151525;border-radius:12px;padding:24px;width:460px;max-height:80vh;overflow-y:auto;border:1px solid rgba(255,255,255,0.1)}
 .modal h3{font-size:16px;margin-bottom:16px;color:#fff}
@@ -86,7 +99,7 @@ body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:radial-gr
 </head>
 <body><div id="root"></div>
 
-<script type="text/babel">
+<script>
 const {useState,useEffect}=React;
 
 const formatNarrationContent=(content)=>{
@@ -118,6 +131,7 @@ const MODES=[
   {key:"narration",name:"口播视频",icon:"🎤"},
   {key:"science",name:"科普视频",icon:"🔬"},
   {key:"gallery",name:"图文展示",icon:"🖼️"},
+  {key:"doc-agent",name:"文档视频",icon:"📚"},
 ];
 
 const api={profiles:()=>fetch(`${API_BASE}/video-api/profiles`).then(r=>r.json()),
@@ -128,6 +142,8 @@ const api={profiles:()=>fetch(`${API_BASE}/video-api/profiles`).then(r=>r.json()
            videos:()=>fetch(`${API_BASE}/video-api/videos`).then(r=>r.json()),
            uploadAvatar:fd=>fetch(`${API_BASE}/video-api/upload/avatar`,{method:"POST",body:fd}).then(r=>r.json()),
            generate:(type,payload)=>fetch(`${API_BASE}/video-api/generate/`+type,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}).then(r=>r.json()),
+           docContinue:id=>fetch(`${API_BASE}/video-api/generate/doc-agent/${id}/continue`,{method:"POST"}).then(r=>r.json()),
+           docRevise:(id,feedback)=>fetch(`${API_BASE}/video-api/generate/doc-agent/${id}/revise`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({feedback})}).then(r=>r.json()),
            status:id=>fetch(`${API_BASE}/video-api/status/`+id).then(r=>r.json()),
            uploadImages:fd=>fetch(`${API_BASE}/video-api/upload/images`,{method:"POST",body:fd}).then(r=>r.json()),
            uploadBgm:fd=>fetch(`${API_BASE}/video-api/upload/bgm`,{method:"POST",body:fd}).then(r=>r.json()),
@@ -224,6 +240,28 @@ function SettingsModal({profiles,voices,onClose,onRefresh}){
   );
 }
 
+function ScriptReviewPanel({review,onConfirm,onRevise,onFeedbackChange}){
+  if(!review||!review.script)return null;
+  const pages=review.script.pages||[];
+  return React.createElement("div",{className:"script-review"},
+    React.createElement("div",{className:"script-review-head"},
+      React.createElement("div",{className:"script-review-title"},"文案确认 · "+(review.script.title||"文档视频")),
+      React.createElement("div",{className:"script-review-count"},(review.feedback||"").trim()?"已输入修改意见，等待提交":review.countdown+" 秒后自动生成")
+    ),
+    ...pages.map((p,i)=>React.createElement("div",{className:"script-page",key:p.page_id||i},
+      React.createElement("h4",null,(i+1)+". "+(p.title||"未命名页面")),
+      p.subtitle?React.createElement("div",{className:"bullets"},p.subtitle):null,
+      p.bullets&&p.bullets.length?React.createElement("div",{className:"bullets"},p.bullets.join(" / ")):null,
+      React.createElement("div",{className:"narration"},p.narration||"")
+    )),
+    React.createElement("textarea",{value:review.feedback||"",onChange:e=>onFeedbackChange(e.target.value),placeholder:"如果要修改，在这里写清楚：比如第 2 页加强痛点、第 4 页不要讲安装、整体更像抖音开场..."}),
+    React.createElement("div",{className:"script-review-actions"},
+      React.createElement("button",{className:"btn",onClick:onConfirm},"确认并生成视频"),
+      React.createElement("button",{className:"btn btn-secondary",onClick:onRevise,disabled:!(review.feedback||"").trim()},"按意见重写文案")
+    )
+  );
+}
+
 // ====== App ======
 function App(){
   const [mode,setMode]=useState("narration");
@@ -233,6 +271,7 @@ function App(){
   const [video,setVideo]=useState(null);const [title,setTitle]=useState("");const [images,setImages]=useState([]);
   const [selectedVideo,setSelectedVideo]=useState(null);
   const [optimizedContent,setOptimizedContent]=useState("");
+  const [review,setReview]=useState(null);
 
   const refresh=async()=>{
     try{setProfiles((await api.profiles()).profiles||[])}catch(e){}
@@ -254,6 +293,54 @@ function App(){
     }catch(e){setGenerating(false);setStatus("❌"+e.message)}
   };
 
+  const pollInteractiveTask=(taskId,type)=>{
+    const id=setInterval(async()=>{
+      const st=await api.status(taskId);
+      setStatus(st.detail||st.status);if(st.images)setImages(st.images);if(st.title)setTitle(st.title);if(st.content)setOptimizedContent(st.content);
+      if(type==="doc-agent"&&st.status==="awaiting_review"){
+        clearInterval(id);setGenerating(false);
+        setReview({taskId,script:st.script,title:st.title,feedback:"",countdown:30});
+      }else if(st.status==="done"){
+        clearInterval(id);setGenerating(false);setReview(null);setVideo(st.video);setStatus("✅完成");refresh();
+      }else if(st.status==="error"){
+        clearInterval(id);setGenerating(false);setReview(null);setStatus("❌"+(st.error||st.detail||""));
+      }
+    },1500);
+  };
+
+  const generateInteractive=async(payload)=>{
+    setGenerating(true);setStatus("启动中...");setImages([]);setOptimizedContent("");setReview(null);
+    try{
+      const d=await api.generate(payload.type,payload);
+      pollInteractiveTask(d.task_id,payload.type);
+    }catch(e){setGenerating(false);setStatus("❌"+e.message)}
+  };
+
+  const continueReview=async()=>{
+    if(!review)return;
+    const taskId=review.taskId;
+    setReview(null);setGenerating(true);setStatus("已确认文案，开始生成视频...");
+    try{await api.docContinue(taskId);pollInteractiveTask(taskId,"doc-agent");}
+    catch(e){setGenerating(false);setStatus("❌"+e.message)}
+  };
+
+  const reviseReview=async()=>{
+    if(!review||!(review.feedback||"").trim())return;
+    const taskId=review.taskId;
+    const feedback=review.feedback.trim();
+    setReview(null);setGenerating(true);setStatus("正在按意见重写文案...");
+    try{await api.docRevise(taskId,feedback);pollInteractiveTask(taskId,"doc-agent");}
+    catch(e){setGenerating(false);setStatus("❌"+e.message)}
+  };
+
+  useEffect(()=>{
+    if(!review)return;
+    if((review.feedback||"").trim())return;
+    if(review.countdown<=0){continueReview();return;}
+    const timer=setTimeout(()=>setReview(r=>r?{...r,countdown:r.countdown-1}:r),1000);
+    return ()=>clearTimeout(timer);
+  },[review&&review.taskId,review&&review.countdown,review&&review.feedback]);
+
   const play=(v)=>{
     setVideo(v.name);setTitle(v.title||v.name.replace(".mp4",""));
     setSelectedVideo(v);
@@ -269,7 +356,7 @@ function App(){
       React.createElement("h2",null,"📼 视频列表"),
       React.createElement("div",{className:"video-list"},
         ...videos.map(v=>React.createElement("div",{key:v.name,className:"video-card"+(video===v.name?" selected":""),onClick:()=>play(v)},
-          React.createElement("div",{className:"v-title"},React.createElement("span",{className:"tag "+(v.type==="narration"?"tag-n":v.type==="gallery"?"tag-g":"tag-s")},v.type==="narration"?"口播":v.type==="gallery"?"图文":"科普"),v.title||v.name.replace(".mp4","")),
+          React.createElement("div",{className:"v-title"},React.createElement("span",{className:"tag "+(v.type==="narration"?"tag-n":v.type==="gallery"?"tag-g":v.type==="doc-agent"?"tag-d":"tag-s")},v.type==="narration"?"口播":v.type==="gallery"?"图文":v.type==="doc-agent"?"文档":"科普"),v.title||v.name.replace(".mp4","")),
           React.createElement("div",{className:"v-meta"},formatVideoTime(v.time)),
           React.createElement("div",{className:"v-meta v-meta-row"},
             React.createElement("span",{className:"v-author"},"👤 "+(v.narrator_name||"播主未记录")),
@@ -282,9 +369,10 @@ function App(){
     // Main
     React.createElement("div",{className:"main"},
       React.createElement("h1",null,MODES.find(m=>m.key===mode)?.icon+" "+MODES.find(m=>m.key===mode)?.name),
-      mode==="narration"?React.createElement(NarrationForm,{profiles,onGenerate:generate,generating,selectedVideo,optimizedContent}):
-      mode==="gallery"?React.createElement(GalleryForm,{profiles,onGenerate:generate,generating,selectedVideo}):
-      React.createElement(ScienceForm,{profiles,onGenerate:generate,generating,selectedVideo}),
+      mode==="narration"?React.createElement(NarrationForm,{profiles,onGenerate:generateInteractive,generating,selectedVideo,optimizedContent}):
+      mode==="gallery"?React.createElement(GalleryForm,{profiles,onGenerate:generateInteractive,generating,selectedVideo}):
+      mode==="doc-agent"?React.createElement(DocAgentForm,{profiles,onGenerate:generateInteractive,generating:generating||!!review,selectedVideo}):
+      React.createElement(ScienceForm,{profiles,onGenerate:generateInteractive,generating,selectedVideo}),
       generating?React.createElement("div",{className:"status"},React.createElement("span",{className:"spin"}),status):null
     ),
     // Preview
@@ -295,6 +383,12 @@ function App(){
         React.createElement("div",{className:"placeholder"},React.createElement("span",{className:"icon"},"🎥"),"选择视频播放")
       ),
       images.length>0?React.createElement("div",{className:"imgs"},React.createElement("h3",null,"🖼️ 图片"),React.createElement("div",null,...images.map((u,i)=>React.createElement("img",{key:i,src:API_BASE+u})))):null,
+      review?React.createElement(ScriptReviewPanel,{
+        review,
+        onConfirm:continueReview,
+        onRevise:reviseReview,
+        onFeedbackChange:value=>setReview(r=>r?{...r,feedback:value,countdown:30}:r)
+      }):null,
       selectedVideo?React.createElement("div",{className:"video-details"},
         React.createElement("div",null,React.createElement("strong",null,"播主："),selectedVideo.narrator_name||"未记录"),
         React.createElement("div",null,React.createElement("strong",null,"背景："),selectedVideo.background||selectedVideo.theme||"未记录"),
@@ -309,7 +403,7 @@ function App(){
 // ====== Narration Form ======
 function NarrationForm({profiles,onGenerate,generating,selectedVideo,optimizedContent}){
   const [topic,setTopic]=useState("");const [content,setContent]=useState("");
-  const [pid,setPid]=useState("");
+  const [pid,setPid]=useState("__free__");
   const [bg,setBg]=useState("");const [bgs,setBgs]=useState([]);
   const [useContent,setUseContent]=useState(true);
   const p=profiles.find(x=>x.id===pid)||{};
@@ -319,7 +413,7 @@ function NarrationForm({profiles,onGenerate,generating,selectedVideo,optimizedCo
     if(!selectedVideo||selectedVideo.type!=="narration")return;
     setTopic(selectedVideo.topic||selectedVideo.title||"");
     setContent(formatNarrationContent(selectedVideo.content||""));
-    setPid(selectedVideo.profile_id||"");
+    setPid(selectedVideo.profile_id||"__free__");
     setBg(selectedVideo.background||"");
     setUseContent(true);
   },[selectedVideo]);
@@ -328,9 +422,9 @@ function NarrationForm({profiles,onGenerate,generating,selectedVideo,optimizedCo
   },[optimizedContent]);
 
   const go=()=>{
-    if(!pid||!p.id)return alert("请选择播主");
     if(!topic.trim())return alert("请输入主题");
-    const payload={type:"narration",topic,profile_id:p.id,name:p.name||"",company:p.company||"",slogan:p.slogan||"",avatar:p.avatar||"",voice_id:p.voice_id||"",voice_api_type:Number(p.voice_type||1),bg_preset:bg};
+    const useFree=pid==="__free__";
+    const payload={type:"narration",topic,profile_id:useFree?"":p.id,name:useFree?"免费默认 TTS":(p.name||""),company:useFree?"AI Video":(p.company||""),slogan:useFree?"Edge TTS":(p.slogan||""),avatar:useFree?"":(p.avatar||""),voice_id:useFree?"":(p.voice_id||""),voice_api_type:useFree?1:Number(p.voice_type||1),bg_preset:bg};
     if(useContent&&content.trim()){payload.content=content.trim();payload.sentences=0;}
     else payload.sentences=5;
     onGenerate(payload);
@@ -339,6 +433,7 @@ function NarrationForm({profiles,onGenerate,generating,selectedVideo,optimizedCo
   return React.createElement("div",null,
     React.createElement("div",{className:"fg"},React.createElement("label",null,"👤 播主"),
       React.createElement("div",{style:{display:"flex",gap:6}},
+        React.createElement("div",{className:"chip"+(pid==="__free__"?" on":""),onClick:()=>setPid("__free__")},React.createElement("span",{className:"dot"}),"免费默认 TTS"),
         ...profiles.map(x=>React.createElement("div",{key:x.id,className:"chip"+(pid===x.id?" on":""),onClick:()=>setPid(x.id)},React.createElement("span",{className:"dot"}),x.name))
       )
     ),
@@ -356,7 +451,7 @@ function NarrationForm({profiles,onGenerate,generating,selectedVideo,optimizedCo
 // ====== Gallery Form ======
 function GalleryForm({profiles,onGenerate,generating,selectedVideo}){
   const [topic,setTopic]=useState("");const [content,setContent]=useState("");
-  const [pid,setPid]=useState("");
+  const [pid,setPid]=useState("__free__");
   const [galleryImages,setGalleryImages]=useState([]); // [{name,preview}]
   const [uploadedPaths,setUploadedPaths]=useState([]);
   const [bgmPath,setBgmPath]=useState("");const [bgmList,setBgmList]=useState([]);
@@ -368,7 +463,7 @@ function GalleryForm({profiles,onGenerate,generating,selectedVideo}){
     if(!selectedVideo||selectedVideo.type!=="gallery")return;
     setTopic(selectedVideo.topic||selectedVideo.title||"");
     setContent(selectedVideo.content||"");
-    setPid(selectedVideo.profile_id||"");
+    setPid(selectedVideo.profile_id||"__free__");
     setBgmPath(selectedVideo.background||"");
   },[selectedVideo]);
 
@@ -400,17 +495,18 @@ function GalleryForm({profiles,onGenerate,generating,selectedVideo}){
   };
 
   const go=()=>{
-    if(!pid||!p.id)return alert("请选择播主");
     if(!topic.trim())return alert("请输入视频标题");
     if(!content.trim())return alert("请输入视频文案内容");
     if(uploadedPaths.length===0)return alert("请至少上传一张图片");
-    const payload={type:"gallery",title:topic.trim(),text:content.trim(),images:uploadedPaths,bgm:bgmPath,profile_id:p.id,name:p.name||"",company:p.company||"",slogan:p.slogan||"",avatar:p.avatar||"",voice_id:p.voice_id||"",voice_api_type:Number(p.voice_type||1)};
+    const useFree=pid==="__free__";
+    const payload={type:"gallery",title:topic.trim(),text:content.trim(),images:uploadedPaths,bgm:bgmPath,profile_id:useFree?"":p.id,name:useFree?"免费默认 TTS":(p.name||""),company:useFree?"AI Video":(p.company||""),slogan:useFree?"Edge TTS":(p.slogan||""),avatar:useFree?"":(p.avatar||""),voice_id:useFree?"":(p.voice_id||""),voice_api_type:useFree?1:Number(p.voice_type||1)};
     onGenerate(payload);
   };
 
   return React.createElement("div",null,
     React.createElement("div",{className:"fg"},React.createElement("label",null,"👤 播主 / 音色"),
       React.createElement("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
+        React.createElement("div",{className:"chip"+(pid==="__free__"?" on":""),onClick:()=>setPid("__free__")},React.createElement("span",{className:"dot"}),"免费默认 TTS"),
         ...profiles.map(x=>React.createElement("div",{key:x.id,className:"chip"+(pid===x.id?" on":""),onClick:()=>setPid(x.id)},React.createElement("span",{className:"dot"}),x.name+(x.voice_id?" 🎙️":"")))
       )
     ),
@@ -437,10 +533,103 @@ function GalleryForm({profiles,onGenerate,generating,selectedVideo}){
   );
 }
 
+// ====== Document Agent Form ======
+function DocAgentForm({profiles,onGenerate,generating,selectedVideo}){
+  const [topic,setTopic]=useState("");
+  const [source,setSource]=useState("");
+  const [audience,setAudience]=useState("beginner");
+  const [style,setStyle]=useState("tech_explainer");
+  const [visualStyle,setVisualStyle]=useState("bright_unified");
+  const [duration,setDuration]=useState(90);
+  const [focus,setFocus]=useState("");
+  const [pid,setPid]=useState("__free__");
+  const p=profiles.find(x=>x.id===pid)||{};
+
+  useEffect(()=>{
+    if(!selectedVideo||selectedVideo.type!=="doc-agent")return;
+    setTopic(selectedVideo.topic||selectedVideo.title||"");
+    setSource(selectedVideo.content||"");
+    setPid(selectedVideo.profile_id||"__free__");
+    setStyle(selectedVideo.theme||"tech_explainer");
+    setVisualStyle((selectedVideo.script&&selectedVideo.script.visual_style)||"bright_unified");
+  },[selectedVideo]);
+
+  const go=()=>{
+    if(!topic.trim()&&!source.trim())return alert("请输入主题或文档来源");
+    const useFree=pid==="__free__";
+    const payload={
+      type:"doc-agent",
+      topic:topic.trim(),
+      source:source.trim(),
+      audience,
+      style,
+      visual_style:visualStyle,
+      duration:Number(duration||90),
+      focus:focus.trim(),
+      profile_id:useFree?"":p.id,
+      name:useFree?"免费默认 TTS":(p.name||""),
+      company:useFree?"AI Video":(p.company||""),
+      slogan:useFree?"Edge TTS":(p.slogan||""),
+      avatar:useFree?"":(p.avatar||""),
+      voice_id:useFree?"":(p.voice_id||""),
+      voice_api_type:useFree?1:Number(p.voice_type||1)
+    };
+    onGenerate(payload);
+  };
+
+  return React.createElement("div",null,
+    React.createElement("div",{className:"fg"},React.createElement("label",null,"👤 播主 / 免费 TTS 音色"),
+      React.createElement("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
+        React.createElement("div",{className:"chip"+(pid==="__free__"?" on":""),onClick:()=>setPid("__free__")},React.createElement("span",{className:"dot"}),"免费默认 TTS"),
+        ...profiles.map(x=>React.createElement("div",{key:x.id,className:"chip"+(pid===x.id?" on":""),onClick:()=>setPid(x.id)},React.createElement("span",{className:"dot"}),x.name+(x.voice_id?" 🎙️":"")))
+      )
+    ),
+    React.createElement("div",{className:"fg"},React.createElement("label",null,"📚 文档来源"),
+      React.createElement("input",{value:source,onChange:e=>setSource(e.target.value),placeholder:"README.md / https://github.com/owner/repo / 博客 URL / PDF 路径"})
+    ),
+    React.createElement("div",{className:"fg"},React.createElement("label",null,"🎯 主题（可选，空则从文档推断）"),
+      React.createElement("input",{value:topic,onChange:e=>setTopic(e.target.value),placeholder:"例如：3分钟看懂 LangGraph"})
+    ),
+    React.createElement("div",{className:"fr"},
+      React.createElement("div",{className:"fg"},React.createElement("label",null,"目标观众"),
+        React.createElement("select",{value:audience,onChange:e=>setAudience(e.target.value)},
+          React.createElement("option",{value:"beginner"},"入门用户"),
+          React.createElement("option",{value:"technical"},"技术开发者"),
+          React.createElement("option",{value:"product"},"产品/业务"),
+          React.createElement("option",{value:"investor"},"投资/管理")
+        )
+      ),
+      React.createElement("div",{className:"fg"},React.createElement("label",null,"内容类型"),
+        React.createElement("select",{value:style,onChange:e=>setStyle(e.target.value)},
+          React.createElement("option",{value:"tech_explainer"},"技术科普"),
+          React.createElement("option",{value:"github_intro"},"GitHub 项目介绍"),
+          React.createElement("option",{value:"product_doc"},"产品文档讲解"),
+          React.createElement("option",{value:"paper_brief"},"论文速读")
+        )
+      )
+    ),
+    React.createElement("div",{className:"fg"},React.createElement("label",null,"页面视觉主题"),
+      React.createElement("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
+        React.createElement("div",{className:"chip"+(visualStyle==="bright_unified"?" on":""),onClick:()=>setVisualStyle("bright_unified")},React.createElement("span",{className:"dot"}),"明亮统一色"),
+        React.createElement("div",{className:"chip"+(visualStyle==="dark_premium"?" on":""),onClick:()=>setVisualStyle("dark_premium")},React.createElement("span",{className:"dot"}),"深色高级版")
+      )
+    ),
+    React.createElement("div",{className:"fr"},
+      React.createElement("div",{className:"fg"},React.createElement("label",null,"目标时长（秒）"),
+        React.createElement("input",{type:"number",min:"30",max:"240",value:duration,onChange:e=>setDuration(e.target.value)})
+      ),
+      React.createElement("div",{className:"fg"},React.createElement("label",null,"重点方向"),
+        React.createElement("input",{value:focus,onChange:e=>setFocus(e.target.value),placeholder:"例如：突出架构、安装使用、商业价值"})
+      )
+    ),
+    React.createElement("button",{className:"btn",onClick:go,disabled:generating},generating?"生成中...":"🚀 生成文档视频")
+  );
+}
+
 // ====== Science Form ======
 function ScienceForm({profiles,onGenerate,generating,selectedVideo}){
   const [topic,setTopic]=useState("");const [theme,setTheme]=useState("dark");
-  const [pid,setPid]=useState("");
+  const [pid,setPid]=useState("__free__");
   const [content,setContent]=useState("");
   const p=profiles.find(x=>x.id===pid)||{};
 
@@ -448,19 +637,20 @@ function ScienceForm({profiles,onGenerate,generating,selectedVideo}){
     if(!selectedVideo||selectedVideo.type!=="science")return;
     setTopic(selectedVideo.topic||selectedVideo.title||"");
     setContent(selectedVideo.content||"");
-    setPid(selectedVideo.profile_id||"");
+    setPid(selectedVideo.profile_id||"__free__");
     setTheme(selectedVideo.theme||"dark");
   },[selectedVideo]);
 
   const go=()=>{
-    if(!pid||!p.id)return alert("请选择播主");
     if(!topic.trim())return alert("请输入主题");
-    onGenerate({type:"science",topic,theme,profile_id:p.id,name:p.name||"",company:p.company||"",slogan:p.slogan||"",avatar:p.avatar||"",voice_id:p.voice_id||"",voice_api_type:Number(p.voice_type||1)});
+    const useFree=pid==="__free__";
+    onGenerate({type:"science",topic,theme,profile_id:useFree?"":p.id,name:useFree?"免费默认 TTS":(p.name||""),company:useFree?"AI Video":(p.company||""),slogan:useFree?"Edge TTS":(p.slogan||""),avatar:useFree?"":(p.avatar||""),voice_id:useFree?"":(p.voice_id||""),voice_api_type:useFree?1:Number(p.voice_type||1)});
   };
 
   return React.createElement("div",null,
     React.createElement("div",{className:"fg"},React.createElement("label",null,"👤 播主"),
       React.createElement("div",{style:{display:"flex",gap:6}},
+        React.createElement("div",{className:"chip"+(pid==="__free__"?" on":""),onClick:()=>setPid("__free__")},React.createElement("span",{className:"dot"}),"免费默认 TTS"),
         ...profiles.map(x=>React.createElement("div",{key:x.id,className:"chip"+(pid===x.id?" on":""),onClick:()=>setPid(x.id)},React.createElement("span",{className:"dot"}),x.name))
       )
     ),

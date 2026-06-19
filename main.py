@@ -26,6 +26,7 @@ from modules.tts import generate_audio
 from modules.image_gen import generate_scene_images
 from modules.video_builder import build_video
 from modules.gallery_video import build_gallery_video
+from modules.doc_agent import build_document_video
 
 console = Console()
 
@@ -337,8 +338,8 @@ def main():
     )
 
     parser.add_argument("topic", nargs="?", help="视频主题（科普模式）")
-    parser.add_argument("--mode", type=str, choices=["science", "narration", "gallery"],
-                        default="science", help="视频模式: science(默认), narration(口播), gallery(图文展示)")
+    parser.add_argument("--mode", type=str, choices=["science", "narration", "gallery", "doc-agent", "doc"],
+                        default="science", help="视频模式: science(默认), narration(口播), gallery(图文展示), doc-agent(文档重构)")
     parser.add_argument("--text", type=str, help="[口播] 文案内容（直接提供，跳过LLM生成）")
     parser.add_argument("--sentences", "-n", type=int, default=0,
                         help="[口播] LLM 生成的句子数（默认交互提问）")
@@ -358,6 +359,16 @@ def main():
     # 图文展示模式
     parser.add_argument("--images", type=str, nargs="*", help="[gallery] 图片路径列表")
     parser.add_argument("--bgm", type=str, help="[gallery] 背景音乐文件路径")
+    # 文档重构智能体模式
+    parser.add_argument("--source", type=str, help="[doc-agent] 文档路径、URL 或 GitHub 仓库")
+    parser.add_argument("--audience", type=str, default="beginner",
+                        help="[doc-agent] 目标观众，如 beginner/technical/product")
+    parser.add_argument("--duration", type=int, default=90, help="[doc-agent] 目标视频时长（秒）")
+    parser.add_argument("--style", type=str, default="tech_explainer",
+                        help="[doc-agent] 内容风格，如 tech_explainer/github_intro/product_doc")
+    parser.add_argument("--visual-style", type=str, choices=["bright_unified", "dark_premium"],
+                        default="bright_unified", help="[doc-agent] 页面视觉主题")
+    parser.add_argument("--focus", type=str, default="", help="[doc-agent] 希望重点讲解的方向")
 
     args = parser.parse_args()
     console.print(BANNER)
@@ -365,6 +376,50 @@ def main():
     # ==================== 图文展示模式 ====================
     if args.mode == "gallery":
         _run_gallery_mode(args)
+        return
+
+    # ==================== 文档重构智能体模式 ====================
+    if args.mode in ("doc-agent", "doc"):
+        if args.voice:
+            config.TTS_VOICE = args.voice
+        try:
+            video_path = build_document_video(
+                topic=args.topic or "",
+                source=args.source or "",
+                audience=args.audience,
+                style=args.style,
+                visual_style=args.visual_style,
+                duration=args.duration,
+                focus=args.focus,
+                voice_id=args.voice or "",
+                voice_type=args.voice_type,
+                output_filename=args.output or "",
+                record=not args.no_record,
+            )
+        except Exception as e:
+            console.print(f"[red]文档视频生成失败: {e}[/red]")
+            import traceback
+            traceback.print_exc()
+            return
+
+        if Path(video_path).suffix.lower() in (".mp4", ".webm"):
+            from modules.db import save_video
+            save_video({
+                "filename": Path(video_path).name,
+                "type": "doc-agent",
+                "title": args.topic or args.source or "文档视频",
+                "topic": args.topic or args.source or "",
+                "content": args.source or args.topic or "",
+                "voice_id": args.voice or config.TTS_VOICE,
+                "voice_type": args.voice_type,
+                "theme": args.style,
+            })
+        console.print()
+        console.print(Panel.fit(
+            f"[bold green]文档视频生成完成[/bold green]\n\n"
+            f"输出: [cyan]{video_path}[/cyan]",
+            border_style="green"
+        ))
         return
 
     # ==================== 口播模式 ====================

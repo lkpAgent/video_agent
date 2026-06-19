@@ -42,6 +42,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def add_static_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/static/vendor/"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return response
+
 VIDEO_OUTPUT = Path(config.VIDEO_OUTPUT_DIR).resolve()
 VIDEO_OUTPUT.mkdir(parents=True, exist_ok=True)
 
@@ -349,6 +357,249 @@ def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, 
         config.TEMP_DIR = orig_temp
 
 
+def _generate_doc_agent_video(task_id, topic, source, audience, style, visual_style, duration, focus, voice, voice_api_type, name, avatar, company, slogan, profile_id=""):
+    try:
+        work_dir = Path(config.TEMP_DIR) / task_id
+        work_dir.mkdir(parents=True, exist_ok=True)
+        orig_temp = config.TEMP_DIR
+        config.TEMP_DIR = str(work_dir)
+
+        if not (topic or source):
+            raise ValueError("请提供主题或文档来源")
+
+        _set_task(task_id, "collecting", "📚 内容采集智能体正在收集资料...")
+        from modules.doc_agent import build_document_video
+        filename = _safe_video_name(topic or source or "doc-agent")
+
+        _set_task(task_id, "generating", "🧠 文档重构智能体正在生成页面与旁白...")
+        video_path = build_document_video(
+            topic=topic,
+            source=source,
+            audience=audience or "beginner",
+            style=style or "tech_explainer",
+            visual_style=visual_style or "bright_unified",
+            duration=int(duration or 90),
+            focus=focus or "",
+            voice_id=voice or "",
+            voice_type=voice_api_type,
+            output_filename=filename,
+            record=True,
+        )
+
+        title = topic or source or "文档视频"
+        metadata_saved = _save_video_metadata({
+            "filename": Path(video_path).name,
+            "type": "doc-agent",
+            "title": title,
+            "topic": topic or source,
+            "content": source or topic,
+            "profile_id": profile_id,
+            "narrator_name": name,
+            "narrator_avatar": avatar,
+            "company": company,
+            "slogan": slogan,
+            "voice_id": voice,
+            "voice_type": voice_api_type,
+            "theme": style,
+            "script": {"visual_style": visual_style or "bright_unified"},
+        })
+
+        tasks[task_id].update({
+            "status": "done",
+            "detail": "✅ 完成！" if metadata_saved else "✅ 视频完成，数据库元数据保存失败",
+            "video": Path(video_path).name,
+            "title": title,
+            "content": source or topic,
+        })
+    except Exception as e:
+        import traceback
+        console.print(f"[red]❌ {e}[/red]")
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        tasks[task_id].update({"status": "error", "detail": f"❌ {e}"})
+    finally:
+        config.TEMP_DIR = orig_temp
+
+
+def _prepare_doc_agent_review(task_id, topic, source, audience, style, visual_style, duration, focus, voice, voice_api_type, name, avatar, company, slogan, profile_id=""):
+    try:
+        work_dir = Path(config.TEMP_DIR) / task_id
+        work_dir.mkdir(parents=True, exist_ok=True)
+        orig_temp = config.TEMP_DIR
+        config.TEMP_DIR = str(work_dir)
+
+        if not (topic or source):
+            raise ValueError("请提供主题或文档来源")
+
+        tasks[task_id]["params"] = {
+            "topic": topic, "source": source, "audience": audience, "style": style,
+            "visual_style": visual_style, "duration": duration, "focus": focus,
+            "voice": voice, "voice_api_type": voice_api_type, "name": name,
+            "avatar": avatar, "company": company, "slogan": slogan, "profile_id": profile_id,
+        }
+
+        _set_task(task_id, "collecting", "📚 内容采集智能体正在收集资料...")
+        from modules.doc_agent.loader import collect_content
+        from modules.doc_agent.planner import generate_page_script
+        bundle = collect_content(topic=topic, source=source)
+        tasks[task_id]["bundle"] = bundle
+        (work_dir / "content_bundle.json").write_text(
+            json.dumps(bundle.to_dict(), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        _set_task(task_id, "scripting", "🧠 正在生成每页标题、文案和旁白...")
+        script = generate_page_script(
+            bundle,
+            audience=audience or "beginner",
+            style=style or "tech_explainer",
+            visual_style=visual_style or "bright_unified",
+            duration=int(duration or 90),
+            focus=focus or "",
+            work_dir=str(work_dir),
+        )
+        tasks[task_id].update({
+            "status": "awaiting_review",
+            "detail": "文案已生成，请确认；30 秒后将自动继续生成视频。",
+            "title": script.title,
+            "script": script.to_dict(),
+            "content": _script_preview_text(script),
+        })
+    except Exception as e:
+        import traceback
+        console.print(f"[red]❌ {e}[/red]")
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        tasks[task_id].update({"status": "error", "detail": f"❌ {e}", "error": str(e)})
+    finally:
+        config.TEMP_DIR = orig_temp
+
+
+def _revise_doc_agent_review(task_id, feedback):
+    orig_temp = config.TEMP_DIR
+    try:
+        task = tasks.get(task_id) or {}
+        params = task.get("params") or {}
+        bundle = task.get("bundle")
+        if not bundle:
+            raise ValueError("原始资料已失效，请重新生成文案")
+        work_dir = Path(config.TEMP_DIR) / task_id
+        work_dir.mkdir(parents=True, exist_ok=True)
+        config.TEMP_DIR = str(work_dir)
+        _set_task(task_id, "scripting", "🧠 正在根据你的修改意见重写文案...")
+        from modules.doc_agent.planner import generate_page_script
+        focus = (params.get("focus") or "").strip()
+        revision_focus = f"{focus}\n用户修改意见：{feedback}".strip()
+        script = generate_page_script(
+            bundle,
+            audience=params.get("audience") or "beginner",
+            style=params.get("style") or "tech_explainer",
+            visual_style=params.get("visual_style") or "bright_unified",
+            duration=int(params.get("duration") or 90),
+            focus=revision_focus,
+            work_dir=str(work_dir),
+        )
+        tasks[task_id].update({
+            "status": "awaiting_review",
+            "detail": "文案已按意见重写，请再次确认；30 秒后将自动继续。",
+            "title": script.title,
+            "script": script.to_dict(),
+            "content": _script_preview_text(script),
+        })
+    except Exception as e:
+        import traceback
+        console.print(f"[red]❌ {e}[/red]")
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        tasks[task_id].update({"status": "error", "detail": f"❌ {e}", "error": str(e)})
+    finally:
+        config.TEMP_DIR = orig_temp
+
+
+def _continue_doc_agent_video(task_id):
+    orig_temp = config.TEMP_DIR
+    try:
+        task = tasks.get(task_id) or {}
+        params = task.get("params") or {}
+        script_data = task.get("script") or {}
+        if not script_data:
+            raise ValueError("没有可继续生成的视频文案")
+        work_dir = Path(config.TEMP_DIR) / task_id
+        work_dir.mkdir(parents=True, exist_ok=True)
+        config.TEMP_DIR = str(work_dir)
+
+        from modules.doc_agent.renderer import generate_page_audio, render_document_video
+        from modules.doc_agent.schemas import PageScript, PageSpec
+
+        pages = [PageSpec(**page) for page in script_data.get("pages", [])]
+        script = PageScript(
+            title=script_data.get("title") or params.get("topic") or "文档视频",
+            audience=script_data.get("audience") or params.get("audience") or "beginner",
+            style=script_data.get("style") or params.get("style") or "tech_explainer",
+            visual_style=script_data.get("visual_style") or params.get("visual_style") or "bright_unified",
+            pages=pages,
+        )
+
+        _set_task(task_id, "audio", "🔊 正在生成逐页旁白...")
+        script = generate_page_audio(
+            script,
+            str(work_dir),
+            params.get("voice") or "",
+            int(params.get("voice_api_type") or 1),
+        )
+        (work_dir / "page_script_with_audio.json").write_text(
+            json.dumps(script.to_dict(), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        _set_task(task_id, "recording", "🎬 正在生成 HTML 并合成视频...")
+        filename = _safe_video_name(params.get("topic") or params.get("source") or script.title or "doc-agent")
+        video_path = render_document_video(script, str(work_dir), output_filename=filename, record=True)
+
+        title = script.title or params.get("topic") or params.get("source") or "文档视频"
+        metadata_saved = _save_video_metadata({
+            "filename": Path(video_path).name,
+            "type": "doc-agent",
+            "title": title,
+            "topic": params.get("topic") or params.get("source"),
+            "content": params.get("source") or params.get("topic"),
+            "profile_id": params.get("profile_id") or "",
+            "narrator_name": params.get("name") or "",
+            "narrator_avatar": params.get("avatar") or "",
+            "company": params.get("company") or "",
+            "slogan": params.get("slogan") or "",
+            "voice_id": params.get("voice") or "",
+            "voice_type": int(params.get("voice_api_type") or 1),
+            "theme": params.get("style") or "tech_explainer",
+            "script": script.to_dict(),
+        })
+        tasks[task_id].update({
+            "status": "done",
+            "detail": "✅ 完成！" if metadata_saved else "✅ 视频完成，数据库元数据保存失败",
+            "video": Path(video_path).name,
+            "title": title,
+            "content": _script_preview_text(script),
+            "script": script.to_dict(),
+        })
+    except Exception as e:
+        import traceback
+        console.print(f"[red]❌ {e}[/red]")
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        tasks[task_id].update({"status": "error", "detail": f"❌ {e}", "error": str(e)})
+    finally:
+        config.TEMP_DIR = orig_temp
+
+
+def _script_preview_text(script):
+    lines = []
+    for idx, page in enumerate(getattr(script, "pages", []) or [], 1):
+        lines.append(f"{idx}. {page.title}")
+        if page.subtitle:
+            lines.append(f"   {page.subtitle}")
+        if page.bullets:
+            lines.append("   " + " / ".join(page.bullets))
+        if page.narration:
+            lines.append(f"   旁白：{page.narration}")
+    return "\n".join(lines)
+
+
 # ====== API ======
 
 @app.get("/video-api/health")
@@ -514,13 +765,51 @@ async def api_narration(req: Request, bg: BackgroundTasks):
                 d.get("bg_preset",""), d.get("content",""), d.get("profile_id",""))
     return {"task_id": tid}
 
+
+@app.post("/video-api/generate/doc-agent")
+async def api_doc_agent(req: Request, bg: BackgroundTasks):
+    d = await req.json()
+    tid = uuid.uuid4().hex[:12]
+    tasks[tid] = {"id": tid, "status": "starting", "detail": "启动中...", "type": "doc-agent",
+                  "topic": d.get("topic", "") or d.get("source", ""), "created": datetime.now().isoformat()}
+    bg.add_task(_prepare_doc_agent_review, tid,
+                d.get("topic", ""), d.get("source", ""), d.get("audience", "beginner"),
+                d.get("style", "tech_explainer"), d.get("visual_style", "bright_unified"),
+                int(d.get("duration", 90)),
+                d.get("focus", ""), d.get("voice", "") or d.get("voice_id", ""),
+                int(d.get("voice_api_type", 1)),
+                d.get("name", ""), d.get("avatar", ""), d.get("company", ""), d.get("slogan", ""),
+                d.get("profile_id", ""))
+    return {"task_id": tid}
+
+@app.post("/video-api/generate/doc-agent/{task_id}/revise")
+async def api_doc_agent_revise(task_id: str, req: Request, bg: BackgroundTasks):
+    if task_id not in tasks:
+        return JSONResponse({"error": "not found"}, 404)
+    d = await req.json()
+    feedback = (d.get("feedback") or "").strip()
+    if not feedback:
+        return JSONResponse({"error": "feedback required"}, 400)
+    bg.add_task(_revise_doc_agent_review, task_id, feedback)
+    return {"task_id": task_id, "ok": True}
+
+@app.post("/video-api/generate/doc-agent/{task_id}/continue")
+async def api_doc_agent_continue(task_id: str, bg: BackgroundTasks):
+    if task_id not in tasks:
+        return JSONResponse({"error": "not found"}, 404)
+    if tasks[task_id].get("status") in {"audio", "recording", "done"}:
+        return {"task_id": task_id, "ok": True}
+    bg.add_task(_continue_doc_agent_video, task_id)
+    return {"task_id": task_id, "ok": True}
+
 @app.get("/video-api/status/{task_id}")
 async def api_status(task_id: str):
     if task_id not in tasks: return JSONResponse({"error":"not found"}, 404)
     t = tasks[task_id]
     return {"status": t["status"], "detail": t.get("detail",""), "video": t.get("video",""),
             "title": t.get("title",""), "error": t.get("error",""),
-            "images": t.get("images", []), "content": t.get("content", "")}
+            "images": t.get("images", []), "content": t.get("content", ""),
+            "script": t.get("script")}
 
 @app.get("/video-api/videos")
 async def api_videos():
