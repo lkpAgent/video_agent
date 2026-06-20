@@ -281,7 +281,7 @@ function App(){
   useEffect(()=>{refresh()},[]);
 
   const generate=async(payload)=>{
-    setGenerating(true);setStatus("启动中...");setImages([]);setOptimizedContent("");
+    setGenerating(true);setStatus("启动中...");setImages([]);setOptimizedContent("");setTitle("");setVideo(null);
     try{
       const d=await api.generate(payload.type,payload);
       const id=setInterval(async()=>{
@@ -309,7 +309,7 @@ function App(){
   };
 
   const generateInteractive=async(payload)=>{
-    setGenerating(true);setStatus("启动中...");setImages([]);setOptimizedContent("");setReview(null);
+    setGenerating(true);setStatus("启动中...");setImages([]);setOptimizedContent("");setTitle("");setVideo(null);setReview(null);
     try{
       const d=await api.generate(payload.type,payload);
       pollInteractiveTask(d.task_id,payload.type);

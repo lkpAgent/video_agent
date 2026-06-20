@@ -22,6 +22,8 @@ from .schemas import PageScript
 
 console = Console()
 
+DOC_AGENT_TTS_SPEED = float(os.getenv("DOC_AGENT_TTS_SPEED", "1.5"))
+
 
 def generate_page_audio(script: PageScript, work_dir: str, voice_id: str = "", voice_type: int = 1) -> PageScript:
     console.print("[bold]Step 4/5: 免费 TTS 逐页生成旁白[/bold]")
@@ -31,9 +33,10 @@ def generate_page_audio(script: PageScript, work_dir: str, voice_id: str = "", v
         text = page.narration.strip() or page.title
         audio_path = audio_dir / f"page_{idx:02d}.mp3"
         tts_generate(text, str(audio_path), voice_id, voice_type)
+        audio_path = _speed_up_audio(audio_path, DOC_AGENT_TTS_SPEED)
         duration = _get_audio_duration(str(audio_path))
         if duration > 0:
-            page.duration = round(duration + 0.45, 2)
+            page.duration = round(duration + 0.3, 2)
         setattr(page, "audio_path", str(audio_path))
         console.print(f"   [{idx}/{len(script.pages)}] {page.duration:.1f}s {page.title[:18]}")
     return script
@@ -127,6 +130,42 @@ def _get_audio_duration(path: str) -> float:
         return float(result.stdout.strip())
     except Exception:
         return 0.0
+
+
+def _speed_up_audio(path: Path, speed: float) -> Path:
+    if speed <= 1.01:
+        return path
+    fast_path = path.with_name(f"{path.stem}_x{str(speed).replace('.', '_')}{path.suffix}")
+    filters = _atempo_filters(speed)
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", str(path),
+                "-filter:a", filters,
+                "-vn", str(fast_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        ).check_returncode()
+        if fast_path.exists() and fast_path.stat().st_size > 100:
+            return fast_path
+    except Exception as exc:
+        console.print(f"[yellow]⚠️ 音频加速失败，使用原始语速: {exc}[/yellow]")
+    return path
+
+
+def _atempo_filters(speed: float) -> str:
+    parts: list[str] = []
+    remaining = speed
+    while remaining > 2.0:
+        parts.append("atempo=2.0")
+        remaining /= 2.0
+    while remaining < 0.5:
+        parts.append("atempo=0.5")
+        remaining /= 0.5
+    parts.append(f"atempo={remaining:.3f}")
+    return ",".join(parts)
 
 
 def _safe_filename(title: str, fallback: str) -> str:

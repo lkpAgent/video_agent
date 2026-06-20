@@ -2,7 +2,7 @@
 视频生成智能体 - Web 服务
 """
 
-import os, sys, json, uuid, re as regex
+import os, sys, json, uuid, re as regex, shutil
 from pathlib import Path
 from datetime import datetime
 from rich.console import Console
@@ -31,6 +31,7 @@ from config import config
 
 Path(config.OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 Path(config.TEMP_DIR).mkdir(parents=True, exist_ok=True)
+BASE_TEMP_DIR = Path(config.TEMP_DIR).resolve()
 
 app = FastAPI(title="AI Video Agent", docs_url="/docs")
 
@@ -54,6 +55,24 @@ VIDEO_OUTPUT = Path(config.VIDEO_OUTPUT_DIR).resolve()
 VIDEO_OUTPUT.mkdir(parents=True, exist_ok=True)
 
 tasks: dict = {}
+
+
+def _fresh_task_dir(task_id: str) -> Path:
+    work_dir = (BASE_TEMP_DIR / task_id).resolve()
+    if BASE_TEMP_DIR not in work_dir.parents:
+        raise ValueError("非法任务目录")
+    if work_dir.exists():
+        shutil.rmtree(work_dir)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    return work_dir
+
+
+def _task_dir(task_id: str) -> Path:
+    work_dir = (BASE_TEMP_DIR / task_id).resolve()
+    if BASE_TEMP_DIR not in work_dir.parents:
+        raise ValueError("非法任务目录")
+    work_dir.mkdir(parents=True, exist_ok=True)
+    return work_dir
 
 
 def _safe_video_name(topic: str) -> str:
@@ -358,10 +377,9 @@ def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, 
 
 
 def _generate_doc_agent_video(task_id, topic, source, audience, style, visual_style, duration, focus, voice, voice_api_type, name, avatar, company, slogan, profile_id=""):
+    orig_temp = config.TEMP_DIR
     try:
-        work_dir = Path(config.TEMP_DIR) / task_id
-        work_dir.mkdir(parents=True, exist_ok=True)
-        orig_temp = config.TEMP_DIR
+        work_dir = _fresh_task_dir(task_id)
         config.TEMP_DIR = str(work_dir)
 
         if not (topic or source):
@@ -421,14 +439,19 @@ def _generate_doc_agent_video(task_id, topic, source, audience, style, visual_st
 
 
 def _prepare_doc_agent_review(task_id, topic, source, audience, style, visual_style, duration, focus, voice, voice_api_type, name, avatar, company, slogan, profile_id=""):
+    orig_temp = config.TEMP_DIR
     try:
-        work_dir = Path(config.TEMP_DIR) / task_id
-        work_dir.mkdir(parents=True, exist_ok=True)
-        orig_temp = config.TEMP_DIR
+        work_dir = _fresh_task_dir(task_id)
         config.TEMP_DIR = str(work_dir)
 
         if not (topic or source):
             raise ValueError("请提供主题或文档来源")
+
+        tasks[task_id].pop("bundle", None)
+        tasks[task_id].pop("script", None)
+        tasks[task_id].pop("content", None)
+        tasks[task_id].pop("title", None)
+        tasks[task_id].pop("video", None)
 
         tasks[task_id]["params"] = {
             "topic": topic, "source": source, "audience": audience, "style": style,
@@ -481,8 +504,7 @@ def _revise_doc_agent_review(task_id, feedback):
         bundle = task.get("bundle")
         if not bundle:
             raise ValueError("原始资料已失效，请重新生成文案")
-        work_dir = Path(config.TEMP_DIR) / task_id
-        work_dir.mkdir(parents=True, exist_ok=True)
+        work_dir = _task_dir(task_id)
         config.TEMP_DIR = str(work_dir)
         _set_task(task_id, "scripting", "🧠 正在根据你的修改意见重写文案...")
         from modules.doc_agent.planner import generate_page_script
@@ -521,8 +543,7 @@ def _continue_doc_agent_video(task_id):
         script_data = task.get("script") or {}
         if not script_data:
             raise ValueError("没有可继续生成的视频文案")
-        work_dir = Path(config.TEMP_DIR) / task_id
-        work_dir.mkdir(parents=True, exist_ok=True)
+        work_dir = _task_dir(task_id)
         config.TEMP_DIR = str(work_dir)
 
         from modules.doc_agent.renderer import generate_page_audio, render_document_video

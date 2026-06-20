@@ -15,6 +15,7 @@ from .schemas import ContentBundle, PageScript, PageSpec
 console = Console()
 
 MAX_MEDIA_PAGES = 3
+MIN_MEDIA_RELEVANCE_SCORE = 6
 
 
 def generate_page_script(
@@ -92,7 +93,7 @@ def _coerce_script(
         if not isinstance(bullets, list):
             bullets = [str(bullets)]
         bullets = [str(b).strip()[:28] for b in bullets if str(b).strip()][:4]
-        narration = str(item.get("narration") or item.get("subtitle") or item.get("title") or "").strip()
+        narration = _compact_narration(str(item.get("narration") or item.get("subtitle") or item.get("title") or "").strip())
         bullets = _ensure_page_density(
             page_type=page_type,
             title=str(item.get("title") or bundle.title),
@@ -105,7 +106,7 @@ def _coerce_script(
         pages.append(PageSpec(
             page_id=str(item.get("page_id") or f"p{idx}"),
             page_type=page_type,
-            title=str(item.get("title") or bundle.title)[:40],
+            title=_compact_title(str(item.get("title") or bundle.title)),
             subtitle=str(item.get("subtitle") or "")[:80],
             bullets=bullets,
             narration=narration,
@@ -113,11 +114,12 @@ def _coerce_script(
             code=str(item.get("code") or "")[:1200],
             accent=str(item.get("accent") or "")[:30],
             media_asset_id=str(item.get("media_asset_id") or "").strip()[:40],
+            media_usage_reason=str(item.get("media_usage_reason") or "").strip()[:120],
         ))
     if pages:
         pages[0].page_type = "hero"
         pages[-1].page_type = "summary"
-    pages = _limit_install_pages(pages, style)
+    pages = _limit_install_pages(pages, style, bundle)
     _attach_media_assets(pages, bundle)
     total = sum(p.duration for p in pages) or 1
     if target_duration > 0:
@@ -133,6 +135,32 @@ def _coerce_script(
     )
 
 
+def _compact_title(text: str) -> str:
+    text = re.sub(r"\s+", " ", (text or "").strip())
+    if not text:
+        return "核心观点"
+    weighted = sum(1.0 if ord(ch) < 128 else 1.8 for ch in text)
+    if len(text) <= 28 and weighted <= 46:
+        return text
+    limit = 32
+    trimmed = text[:limit].rstrip(" ，,。；;：:")
+    match = re.search(r"[A-Za-z0-9_+.-]+$", trimmed)
+    if match and len(text) > limit and re.match(r"[A-Za-z0-9_+.-]", text[limit:limit + 1] or ""):
+        trimmed = trimmed[:match.start()].rstrip(" ，,。；;：:")
+    return trimmed or text[:limit].rstrip()
+
+
+def _compact_narration(text: str) -> str:
+    text = re.sub(r"\s+", " ", (text or "").strip())
+    if len(text) <= 60:
+        return text
+    for mark in "。！？!?；;":
+        pos = text.rfind(mark, 0, 58)
+        if pos >= 24:
+            return text[:pos + 1]
+    return text[:58].rstrip(" ，,。；;：:") + "。"
+
+
 def _attach_media_assets(pages: list[PageSpec], bundle: ContentBundle) -> None:
     assets = [
         asset for asset in getattr(bundle, "media_assets", [])
@@ -142,6 +170,7 @@ def _attach_media_assets(pages: list[PageSpec], bundle: ContentBundle) -> None:
         return
     by_id = {asset.asset_id: asset for asset in assets if asset.asset_id}
     used: set[str] = set()
+    rejected_pages: set[str] = set()
     for page in pages:
         if len(used) >= MAX_MEDIA_PAGES:
             page.media_asset_id = ""
@@ -150,15 +179,20 @@ def _attach_media_assets(pages: list[PageSpec], bundle: ContentBundle) -> None:
             page.media_asset_id = ""
             continue
         asset = by_id.get(page.media_asset_id)
-        if asset and asset.asset_id not in used:
+        if asset and asset.asset_id not in used and _is_media_relevant(page, asset):
             _set_page_media(page, asset)
             used.add(asset.asset_id)
         elif page.media_asset_id:
+            rejected_pages.add(page.page_id)
+            page.media_usage_reason = ""
             page.media_asset_id = ""
 
     candidates = [
         page for page in pages
-        if page.page_type not in {"hero", "code_demo", "summary"} and not page.media_path
+        if page.page_type not in {"hero", "code_demo", "summary"}
+        and not page.media_path
+        and page.page_id not in rejected_pages
+        and not getattr(page, "_skip_auto_media", False)
     ]
     for page in candidates:
         if len(used) >= min(MAX_MEDIA_PAGES, len(assets)):
@@ -172,7 +206,7 @@ def _attach_media_assets(pages: list[PageSpec], bundle: ContentBundle) -> None:
         if not scored:
             break
         score, asset = scored[0]
-        if score < 2:
+        if score < MIN_MEDIA_RELEVANCE_SCORE:
             continue
         _set_page_media(page, asset)
         used.add(asset.asset_id or asset.local_path)
@@ -186,8 +220,19 @@ def _set_page_media(page: PageSpec, asset) -> None:
     page.media_asset_id = asset.asset_id
 
 
+def _is_media_relevant(page: PageSpec, asset) -> bool:
+    return _media_relevance_score(page, asset) >= MIN_MEDIA_RELEVANCE_SCORE
+
+
 def _media_relevance_score(page: PageSpec, asset) -> int:
-    page_text = " ".join([page.title, page.subtitle, page.narration, " ".join(page.bullets)]).lower()
+    core_page_text = " ".join([
+        page.title,
+        page.subtitle,
+        page.narration,
+        " ".join(page.bullets),
+    ]).lower()
+    usage_reason = getattr(page, "media_usage_reason", "").lower()
+    page_text = " ".join([core_page_text, usage_reason]).lower()
     asset_parts = [
         asset.title,
         asset.alt,
@@ -203,6 +248,12 @@ def _media_relevance_score(page: PageSpec, asset) -> int:
     for token in _keywords(asset_text):
         if token and token in page_text:
             score += 1
+    if page.media_asset_id and not getattr(page, "media_usage_reason", "").strip():
+        score -= 3
+    if _is_generic_design_asset(asset_text) and not _page_is_visual_output_page(core_page_text, page.page_type):
+        score -= 12
+    if usage_reason and _is_weak_media_reason(usage_reason, core_page_text):
+        score -= 8
     page_type_map = {
         "workflow": ("流程", "工作流", "workflow", "pipeline"),
         "feature_cards": ("功能", "能力", "feature", "capability"),
@@ -218,16 +269,50 @@ def _media_relevance_score(page: PageSpec, asset) -> int:
     return score
 
 
+def _is_generic_design_asset(asset_text: str) -> bool:
+    generic_hints = (
+        "设计样例", "设计模板", "视觉展示", "视觉输出", "排版设计", "海报设计",
+        "风格化", "frame system", "design template", "poster", "visual",
+    )
+    return any(hint in asset_text for hint in generic_hints)
+
+
+def _page_is_visual_output_page(page_text: str, page_type: str) -> bool:
+    visual_hints = (
+        "界面", "效果", "样例", "模板", "设计规范", "frame.md", "成片",
+        "产品效果", "输出质量", "风格模板", "排版模板", "设计系统",
+    )
+    if page_type in {"metrics", "workflow"}:
+        return True
+    return any(hint in page_text for hint in visual_hints)
+
+
+def _is_weak_media_reason(reason: str, core_page_text: str) -> bool:
+    weak_patterns = (
+        "视觉质量", "设计样例", "设计效果", "视觉效果", "好看", "美观",
+        "展示项目能力", "体现项目能力", "体现视觉", "展示设计",
+    )
+    if not any(pattern in reason for pattern in weak_patterns):
+        return False
+    strong_page_hints = (
+        "frame.md", "设计规范", "设计系统", "模板", "界面", "工作流",
+        "产品效果", "效果展示", "成片", "输出质量",
+    )
+    return not any(hint in core_page_text for hint in strong_page_hints)
+
+
 def _keywords(text: str) -> list[str]:
     words = re.findall(r"[a-zA-Z][a-zA-Z0-9_-]{2,}|[\u4e00-\u9fff]{2,6}", text or "")
     stop = {"这个", "一个", "可以", "通过", "如果", "不是", "页面", "视频", "项目", "用户", "适合"}
     return [w.lower() for w in words if w.lower() not in stop][:40]
 
 
-def _limit_install_pages(pages: list[PageSpec], style: str) -> list[PageSpec]:
+def _limit_install_pages(pages: list[PageSpec], style: str, bundle: ContentBundle | None = None) -> list[PageSpec]:
     if style not in {"github_intro", "tech_explainer"}:
         return pages
     install_seen = False
+    converted_extra = False
+    kept_pages: list[PageSpec] = []
     for page in pages:
         text = " ".join([page.title, page.subtitle, page.narration, " ".join(page.bullets), page.code]).lower()
         is_install = any(k in text for k in (
@@ -235,6 +320,7 @@ def _limit_install_pages(pages: list[PageSpec], style: str) -> list[PageSpec]:
             "安装", "部署", "启动", "环境变量", "clone",
         ))
         if not is_install:
+            kept_pages.append(page)
             continue
         if page.page_type == "code_demo" or is_install:
             if not install_seen:
@@ -242,17 +328,62 @@ def _limit_install_pages(pages: list[PageSpec], style: str) -> list[PageSpec]:
                 page.title = page.title[:18] or "快速试用入口"
                 if not page.bullets:
                     page.bullets = ["最短路径体验", "适合动手验证"]
+                kept_pages.append(page)
             else:
+                if converted_extra:
+                    continue
                 page.page_type = "concept"
-                page.title = "为什么值得试"
-                page.subtitle = "安装只是入口，价值在自动化能力"
-                page.bullets = ["降低制作门槛", "串起完整流程", "适合二次开发"]
-                page.narration = (
-                    "安装命令只是入口，真正值得关注的是这个项目把原本分散的脚本、素材、配音和合成流程串成了一条自动化链路。"
-                    "对创作者来说，它省的是剪辑时间；对开发者来说，它给了一个可以继续扩展的视频生成底座。"
-                )
+                page.title = "真正值得看的价值"
+                page.subtitle = "安装只是入口，关键是它能解决什么问题"
+                page.bullets, page.narration = _source_value_fallback(bundle)
                 page.code = ""
-    return pages
+                page.media_asset_id = ""
+                page.media_path = ""
+                setattr(page, "_skip_auto_media", True)
+                converted_extra = True
+                kept_pages.append(page)
+    return kept_pages
+
+
+def _source_value_fallback(bundle: ContentBundle | None) -> tuple[list[str], str]:
+    title = _compact_title(getattr(bundle, "title", "") or "这个项目")
+    text_parts = [
+        getattr(bundle, "title", "") or "",
+        getattr(bundle, "summary", "") or "",
+        " ".join(getattr(bundle, "key_facts", []) or []),
+    ]
+    for item in getattr(bundle, "raw_materials", []) or []:
+        text_parts.append(getattr(item, "title", "") or "")
+        text_parts.append((getattr(item, "content", "") or "")[:3000])
+    text = " ".join(text_parts).lower()
+    candidates = [
+        (("数据", "分析", "excel", "sql", "报表", "报告", "chart", "dashboard"), "数据分析自动化"),
+        (("自然语言", "问答", "chat", "query", "nl2sql", "问数"), "自然语言交互"),
+        (("知识库", "文档", "检索", "rag", "搜索", "引用"), "文档知识可检索"),
+        (("工作流", "workflow", "编排", "pipeline", "流程"), "流程可以编排"),
+        (("agent", "智能体", "多智能体", "multi-agent", "tool", "工具调用"), "智能体调用工具"),
+        (("私有化", "本地", "部署", "企业", "权限", "安全"), "适合私有部署"),
+        (("开源", "二开", "扩展", "插件", "api", "sdk"), "方便二次开发"),
+        (("生成", "自动", "自动化", "一键", "批量"), "减少重复操作"),
+    ]
+    bullets: list[str] = []
+    for keywords, label in candidates:
+        if any(keyword in text for keyword in keywords) and label not in bullets:
+            bullets.append(label)
+        if len(bullets) >= 3:
+            break
+    if len(bullets) < 3:
+        for label in ("先看核心能力", "再看适用场景", "最后动手验证"):
+            if label not in bullets:
+                bullets.append(label)
+            if len(bullets) >= 3:
+                break
+    joined = "、".join(bullets[:3])
+    narration = (
+        f"安装步骤只是入口，真正值得关注的是「{title}」能不能把{joined}落到真实工作流里。"
+        "先判断它解决的问题和适用场景，再决定是否部署试用，会比只看命令行更有价值。"
+    )
+    return bullets[:3], narration
 
 
 def _ensure_page_density(

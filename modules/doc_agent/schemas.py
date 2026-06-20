@@ -84,6 +84,7 @@ class PageSpec:
     media_path: str = ""
     media_alt: str = ""
     media_asset_id: str = ""
+    media_usage_reason: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -99,6 +100,7 @@ class PageSpec:
             "media_path": self.media_path,
             "media_alt": self.media_alt,
             "media_asset_id": self.media_asset_id,
+            "media_usage_reason": self.media_usage_reason,
         }
 
 
