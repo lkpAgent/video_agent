@@ -10,7 +10,7 @@ from rich.console import Console
 from config import config
 from modules.gallery_video import (
     _check_hyperframes_available,
-    _get_hyperframes_cli,
+    _get_hyperframes_cmd,
     _mux_gallery_audio,
     _resolve_rendered_video_path,
     record_gallery_video,
@@ -54,11 +54,18 @@ def render_document_video(
     if not record:
         return html_path
     engine = config.RECORD_ENGINE.lower()
-    if engine in ("hyperframes", "hf") and _check_hyperframes_available():
-        video_path = _render_with_hyperframes(html_path, script, work_dir, output_filename)
-        if video_path:
-            return video_path
-        console.print("[yellow]HyperFrames 渲染失败，回退到浏览器录制[/yellow]")
+    if engine in ("hyperframes", "hf"):
+        if not _check_hyperframes_available():
+            if not getattr(config, "RECORD_FALLBACK_TO_SELENIUM", True):
+                raise RuntimeError("HyperFrames 不可用，请检查 Node/npm/npx/HyperFrames CLI 环境")
+            console.print("[yellow]⚠️ HyperFrames 不可用，文档视频回退 Firefox + Selenium[/yellow]")
+        else:
+            try:
+                return _render_with_hyperframes(html_path, script, work_dir, output_filename)
+            except Exception as exc:
+                if not getattr(config, "RECORD_FALLBACK_TO_SELENIUM", True):
+                    raise
+                console.print(f"[yellow]⚠️ HyperFrames 文档视频渲染失败，回退 Firefox + Selenium: {exc}[/yellow]")
     scenes = _pages_as_scenes(script)
     return record_gallery_video(html_path, scenes, "", output_filename or "doc-agent.mp4")
 
@@ -70,10 +77,9 @@ def _render_with_hyperframes(html_path: str, script: PageScript, work_dir: str, 
     if output_path.suffix.lower() != ".mp4":
         output_path = output_path.with_suffix(".mp4")
     total_duration = sum(p.duration for p in script.pages)
-    cli = _get_hyperframes_cli()
-    if not cli:
-        return ""
-    cmd = [cli, "--yes", "hyperframes", "render", str(Path(html_path).resolve().parent), "-o", str(output_path)]
+    cmd = _get_hyperframes_cmd(["render", str(Path(html_path).resolve().parent), "-o", str(output_path)])
+    if not cmd:
+        raise RuntimeError("HyperFrames CLI 不可用")
     timeout_seconds = int(os.getenv(
         "HYPERFRAMES_TIMEOUT_SECONDS",
         str(min(1800, max(300, int(total_duration * 20) + 180))),
@@ -92,7 +98,9 @@ def _render_with_hyperframes(html_path: str, script: PageScript, work_dir: str, 
         )
     except subprocess.TimeoutExpired:
         actual = _resolve_rendered_video_path(str(output_path), "", started_at)
-        return actual
+        if actual:
+            return actual
+        raise RuntimeError(f"HyperFrames 文档视频渲染超时: {' '.join(cmd)}")
     actual = _resolve_rendered_video_path(
         str(output_path),
         (result.stdout or "") + "\n" + (result.stderr or ""),
@@ -101,10 +109,18 @@ def _render_with_hyperframes(html_path: str, script: PageScript, work_dir: str, 
     if result.returncode == 0 and actual:
         console.print(f"   视频: [green]{actual}[/green]")
         return actual
+    failure_lines = []
+    if result.stdout:
+        failure_lines.extend(result.stdout.strip().splitlines()[-10:])
     if result.stderr:
-        for line in result.stderr.strip().splitlines()[-10:]:
-            console.print(f"[dim]   {line}[/dim]")
-    return ""
+        failure_lines.extend(result.stderr.strip().splitlines()[-15:])
+    for line in failure_lines:
+        console.print(f"[dim]   {line}[/dim]")
+    raise RuntimeError(
+        "HyperFrames 文档视频渲染失败\n"
+        f"命令: {' '.join(cmd)}\n"
+        f"输出: {' | '.join(failure_lines[-20:])}"
+    )
 
 
 def _pages_as_scenes(script: PageScript) -> list[dict]:

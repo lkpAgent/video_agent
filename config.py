@@ -75,10 +75,12 @@ class Config:
     # ======== 视频配置 ========
     # 录制引擎: selenium(Firefox) / playwright / hyperframes(HF CLI)
     RECORD_ENGINE: str = os.getenv("RECORD_ENGINE", "selenium")
+    RECORD_FALLBACK_TO_SELENIUM: bool = os.getenv("RECORD_FALLBACK_TO_SELENIUM", "true").lower() == "true"
     # 口播视频单独录制引擎；未配置时跟随 RECORD_ENGINE，但 hyperframes 模式下回退 selenium
-    NARRATION_RECORD_ENGINE: str = os.getenv(
-        "NARRATION_RECORD_ENGINE",
-        "selenium" if RECORD_ENGINE.lower() in {"hyperframes", "hf"} else RECORD_ENGINE,
+    _narration_record_engine = os.getenv("NARRATION_RECORD_ENGINE", "").strip()
+    NARRATION_RECORD_ENGINE: str = (
+        _narration_record_engine
+        or ("selenium" if RECORD_ENGINE.lower() in {"hyperframes", "hf"} else RECORD_ENGINE)
     )
     RECORD_BROWSER: str = os.getenv("RECORD_BROWSER", "firefox")
     GECKODRIVER_PATH: str = os.getenv("GECKODRIVER_PATH", "./tools/geckodriver.exe" if os.name == "nt" else "")

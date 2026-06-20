@@ -442,7 +442,13 @@ def _record_video(html_path: str, script: dict, audio_path: str, output_filename
         if engine in {"hyperframes", "hf"}:
             console.print("[yellow]科普视频暂未接入 HyperFrames 渲染，当前链路回退 Selenium，避免服务器误走 Playwright[/yellow]")
         return _record_with_selenium(html_path, script, audio_path, output_filename)
-    return _record_with_playwright(html_path, script, audio_path, output_filename)
+    try:
+        return _record_with_playwright(html_path, script, audio_path, output_filename)
+    except Exception as exc:
+        if not getattr(config, "RECORD_FALLBACK_TO_SELENIUM", True):
+            raise
+        console.print(f"[yellow]⚠️ Playwright 录制失败，尝试回退 Firefox + Selenium: {exc}[/yellow]")
+        return _record_with_selenium(html_path, script, audio_path, output_filename)
 
 
 def _record_with_selenium(html_path: str, script: dict, audio_path: str, output_filename: str = None) -> str:

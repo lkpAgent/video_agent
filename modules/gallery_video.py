@@ -22,6 +22,7 @@ import time
 import base64
 import asyncio
 import shutil
+import shlex
 import subprocess
 import html as html_lib
 from pathlib import Path
@@ -36,6 +37,7 @@ from config import config
 console = Console()
 _HYPERFRAMES_CLI = ""
 _HYPERFRAMES_CHECKED = False
+_HYPERFRAMES_BASE_CMD: list[str] = []
 
 
 def _escape_html(value: object) -> str:
@@ -851,9 +853,67 @@ def _resolve_hyperframes_cli() -> str:
     return next((str(Path(path).resolve()) for path in candidates if path and Path(path).is_file()), "")
 
 
+def _npx_supports_yes(cli: str) -> bool:
+    try:
+        result = subprocess.run(
+            [cli, "--version"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=20, cwd=str(Path(__file__).resolve().parent.parent)
+        )
+        version = (result.stdout or result.stderr or "").strip()
+        major = int((version.split(".") or ["0"])[0])
+        return major >= 7
+    except Exception:
+        return False
+
+
+def _build_hyperframes_base_cmd(cli: str) -> list[str]:
+    configured = os.getenv("HYPERFRAMES_COMMAND", "").strip()
+    if configured:
+        return shlex.split(configured)
+    cmd = [cli]
+    if _npx_supports_yes(cli):
+        cmd.append("--yes")
+    cmd.extend(["--package", "hyperframes", "hyperframes"])
+    return cmd
+
+
+def _run_version_command(cmd: list[str]) -> str:
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=20, cwd=str(Path(__file__).resolve().parent.parent)
+        )
+        output = (result.stdout or result.stderr or "").strip()
+        return output or f"exit {result.returncode}"
+    except Exception as exc:
+        return f"error: {exc}"
+
+
+def _hyperframes_runtime_report(cli: str = "") -> str:
+    lines = []
+    node_path = shutil.which("node") or ""
+    npm_path = shutil.which("npm") or ""
+    npx_path = cli or shutil.which("npx") or ""
+    if node_path:
+        lines.append(f"node={node_path} ({_run_version_command([node_path, '--version'])})")
+    else:
+        lines.append("node=not found")
+    if npm_path:
+        lines.append(f"npm={npm_path} ({_run_version_command([npm_path, '--version'])})")
+    else:
+        lines.append("npm=not found")
+    if npx_path:
+        lines.append(f"npx={npx_path} ({_run_version_command([npx_path, '--version'])})")
+    else:
+        lines.append("npx=not found")
+    return "; ".join(lines)
+
+
 def _check_hyperframes_available(force: bool = False) -> bool:
     """检查 HyperFrames 是否可用，并输出可诊断的失败原因。"""
-    global _HYPERFRAMES_CLI, _HYPERFRAMES_CHECKED
+    global _HYPERFRAMES_CLI, _HYPERFRAMES_CHECKED, _HYPERFRAMES_BASE_CMD
     if _HYPERFRAMES_CHECKED and not force:
         return bool(_HYPERFRAMES_CLI)
 
@@ -862,22 +922,29 @@ def _check_hyperframes_available(force: bool = False) -> bool:
     if not cli:
         console.print("[yellow]HyperFrames 检测失败: 找不到 npx，请设置 NPX_PATH[/yellow]")
         _HYPERFRAMES_CLI = ""
+        _HYPERFRAMES_BASE_CMD = []
         return False
+    base_cmd = _build_hyperframes_base_cmd(cli)
     try:
         result = subprocess.run(
-            [cli, "--yes", "hyperframes", "--version"],
+            base_cmd + ["--version"],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=60, cwd=str(Path(__file__).resolve().parent.parent)
         )
         if result.returncode == 0:
             _HYPERFRAMES_CLI = cli
-            console.print(f"[dim]HyperFrames 可用: {(result.stdout or '').strip()} ({cli})[/dim]")
+            _HYPERFRAMES_BASE_CMD = base_cmd
+            output = (result.stdout or result.stderr or "").strip()
+            console.print(f"[dim]HyperFrames 可用: {output or 'ok'} ({' '.join(base_cmd)})[/dim]")
             return True
         detail = (result.stderr or result.stdout or f"exit {result.returncode}").strip()
         console.print(f"[yellow]HyperFrames 检测失败: {detail[-500:]}[/yellow]")
+        console.print(f"[yellow]HyperFrames runtime: {_hyperframes_runtime_report(cli)}[/yellow]")
     except Exception as exc:
         console.print(f"[yellow]HyperFrames 检测异常: {exc}[/yellow]")
+        console.print(f"[yellow]HyperFrames runtime: {_hyperframes_runtime_report(cli)}[/yellow]")
     _HYPERFRAMES_CLI = ""
+    _HYPERFRAMES_BASE_CMD = []
     return False
 
 
@@ -885,6 +952,12 @@ def _get_hyperframes_cli() -> str:
     if _check_hyperframes_available():
         return _HYPERFRAMES_CLI
     return ""
+
+
+def _get_hyperframes_cmd(args: list[str]) -> list[str]:
+    if _check_hyperframes_available():
+        return [*_HYPERFRAMES_BASE_CMD, *args]
+    return []
 
 
 def _resolve_rendered_video_path(
@@ -963,12 +1036,11 @@ def _record_hyperframes(
     console.print(f"   ⏱️  总时长: {total_duration:.1f}s")
     
     try:
-        cli = _get_hyperframes_cli()
-        if not cli:
-            console.print("[red]HyperFrames CLI 不可用[/red]")
-            return ""
         project_dir = str(Path(hf_html).resolve().parent)
-        cmd = [cli, "--yes", "hyperframes", "render", project_dir, "-o", output_path]
+        cmd = _get_hyperframes_cmd(["render", project_dir, "-o", output_path])
+        if not cmd:
+            console.print("[red]HyperFrames CLI 不可用[/red]")
+            raise RuntimeError(f"HyperFrames CLI 不可用。{_hyperframes_runtime_report()}")
         console.print(f"   [dim]命令: {' '.join(cmd)}[/dim]")
         timeout_seconds = int(os.getenv(
             "HYPERFRAMES_TIMEOUT_SECONDS",
@@ -995,23 +1067,31 @@ def _record_hyperframes(
             return actual_output_path
         else:
             console.print(f"[red]HyperFrames 渲染失败 (exit: {result.returncode})[/red]")
+            failure_lines = []
             if result.stdout:
                 for line in result.stdout.strip().split("\n")[-12:]:
                     console.print(f"[dim]  {line}[/dim]")
+                    failure_lines.append(line)
             if result.stderr:
                 for line in result.stderr.strip().split("\n")[-15:]:
                     console.print(f"[dim]  {line}[/dim]")
-            return ""
+                    failure_lines.append(line)
+            raise RuntimeError(
+                "HyperFrames 渲染失败\n"
+                f"命令: {' '.join(cmd)}\n"
+                f"运行环境: {_hyperframes_runtime_report()}\n"
+                f"输出: {' | '.join(failure_lines[-20:])}"
+            )
     except subprocess.TimeoutExpired:
         actual_output_path = _resolve_rendered_video_path(output_path, "", time.time() - timeout_seconds)
         if actual_output_path:
             console.print(f"[yellow]HyperFrames 进程超时，但检测到已生成视频: {actual_output_path}[/yellow]")
             return actual_output_path
         console.print("[red]HyperFrames 渲染超时[/red]")
-        return ""
+        raise RuntimeError(f"HyperFrames 渲染超时: {' '.join(cmd)}")
     except Exception as e:
         console.print(f"[red]HyperFrames 异常: {e}[/red]")
-        return ""
+        raise
 
 
 # ==================== 录制 ====================
@@ -1024,10 +1104,18 @@ def record_gallery_video(
 ) -> str:
     """录制图文展示视频（引擎由 RECORD_ENGINE 配置决定）"""
     engine = config.RECORD_ENGINE.lower()
+    if engine in {"hyperframes", "hf"}:
+        console.print("[yellow]HyperFrames 不可用或未执行时，浏览器录制回退 Firefox + Selenium[/yellow]")
+        return _record_gallery_selenium(html_path, scenes, bgm_path, output_filename)
     if engine == "selenium":
         return _record_gallery_selenium(html_path, scenes, bgm_path, output_filename)
-    else:
+    try:
         return _record_gallery_playwright(html_path, scenes, bgm_path, output_filename)
+    except Exception as exc:
+        if not getattr(config, "RECORD_FALLBACK_TO_SELENIUM", True):
+            raise
+        console.print(f"[yellow]⚠️ Playwright 录制失败，尝试回退 Firefox + Selenium: {exc}[/yellow]")
+        return _record_gallery_selenium(html_path, scenes, bgm_path, output_filename)
 
 
 def _record_gallery_selenium(
@@ -1336,17 +1424,31 @@ def build_gallery_video(
     if engine in ("hyperframes", "hf"):
         console.print("[bold]━━━ Step 3/4: HyperFrames 渲染 ━━━[/bold]")
         if not _check_hyperframes_available():
-            console.print("[yellow]⚠️  HyperFrames 不可用，回退到 Selenium[/yellow]")
+            message = f"HyperFrames 不可用。{_hyperframes_runtime_report()}"
+            if not getattr(config, "RECORD_FALLBACK_TO_SELENIUM", True):
+                raise RuntimeError(message)
+            console.print(f"[yellow]⚠️ {message} 将回退 Firefox + Selenium。[/yellow]")
+            console.print("[bold]━━━ Step 3/4: 生成 HTML 页面 ━━━[/bold]")
             html_path = generate_gallery_html(scenes, images, title, bgm_path)
             if not record:
+                console.print("[yellow]跳过录制[/yellow]")
                 return html_path
-            video_path = record_gallery_video(html_path, scenes, bgm_path, output_filename)
+            console.print("[bold]━━━ Step 4/4: 录制视频 ━━━[/bold]")
+            video_path = _record_gallery_selenium(html_path, scenes, bgm_path, output_filename)
         else:
-            video_path = _record_hyperframes(scenes, images, title, bgm_path, output_filename, config.TEMP_DIR)
-            if not video_path:
-                console.print("[yellow]⚠️  HyperFrames 失败，回退到 Selenium[/yellow]")
+            try:
+                video_path = _record_hyperframes(scenes, images, title, bgm_path, output_filename, config.TEMP_DIR)
+            except Exception as exc:
+                if not getattr(config, "RECORD_FALLBACK_TO_SELENIUM", True):
+                    raise
+                console.print(f"[yellow]⚠️ HyperFrames 渲染失败，尝试回退 Firefox + Selenium: {exc}[/yellow]")
+                console.print("[bold]━━━ Step 3/4: 生成 HTML 页面 ━━━[/bold]")
                 html_path = generate_gallery_html(scenes, images, title, bgm_path)
-                video_path = record_gallery_video(html_path, scenes, bgm_path, output_filename)
+                if not record:
+                    console.print("[yellow]跳过录制[/yellow]")
+                    return html_path
+                console.print("[bold]━━━ Step 4/4: 录制视频 ━━━[/bold]")
+                video_path = _record_gallery_selenium(html_path, scenes, bgm_path, output_filename)
     else:
         console.print("[bold]━━━ Step 3/4: 生成 HTML 页面 ━━━[/bold]")
         html_path = generate_gallery_html(scenes, images, title, bgm_path)

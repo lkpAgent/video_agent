@@ -193,7 +193,7 @@ def _generate_gallery_video(task_id, images, text, title, bgm, voice, voice_api_
         from modules.gallery_video import (
             llm_breakdown_gallery_text, generate_gallery_audio,
             generate_gallery_html, record_gallery_video,
-            _check_hyperframes_available, _record_hyperframes
+            _record_hyperframes
         )
 
         # Step 1: LLM 拆解
@@ -205,17 +205,19 @@ def _generate_gallery_video(task_id, images, text, title, bgm, voice, voice_api_
 
         filename = _safe_video_name(title or "gallery")
         engine = config.RECORD_ENGINE.lower()
-        if engine in ("hyperframes", "hf") and _check_hyperframes_available():
+        if engine in ("hyperframes", "hf"):
             _set_task(task_id, "recording", "🎬 HyperFrames 逐帧渲染中...")
-            video_path = _record_hyperframes(scenes, images, title, bgm, filename, str(work_dir))
-            if not video_path:
-                console.print("[yellow]⚠️  HyperFrames 渲染失败，回退到普通录制引擎[/yellow]")
-                _set_task(task_id, "recording", "⚠️ HyperFrames 超时，回退到普通录制...")
+            try:
+                video_path = _record_hyperframes(scenes, images, title, bgm, filename, str(work_dir))
+            except Exception as exc:
+                if not getattr(config, "RECORD_FALLBACK_TO_SELENIUM", True):
+                    raise
+                console.print(f"[yellow]⚠️ HyperFrames 图文视频失败，回退 Firefox + Selenium: {exc}[/yellow]")
+                _set_task(task_id, "html", "📄 HyperFrames 不可用，生成 HTML 页面...")
                 html_path = generate_gallery_html(scenes, images, title, bgm)
+                _set_task(task_id, "recording", "🎥 回退 Firefox + Selenium 录制...")
                 video_path = record_gallery_video(html_path, scenes, bgm, filename)
         else:
-            if engine in ("hyperframes", "hf"):
-                console.print("[yellow]HyperFrames 不可用，回退到普通录制引擎[/yellow]")
             _set_task(task_id, "html", "📄 生成 HTML 页面...")
             html_path = generate_gallery_html(scenes, images, title, bgm)
             _set_task(task_id, "recording", "🎥 录制视频 + 合成音频...")
