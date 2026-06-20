@@ -438,7 +438,9 @@ def convert_webm_to_mp4(webm_path: str, mp4_path: str = None, audio_path: str = 
 def _record_video(html_path: str, script: dict, audio_path: str, output_filename: str = None) -> str:
     """录制视频（支持 Playwright 或 Selenium）"""
     engine = config.RECORD_ENGINE.lower()
-    if engine == "selenium":
+    if engine in {"selenium", "hyperframes", "hf"}:
+        if engine in {"hyperframes", "hf"}:
+            console.print("[yellow]科普视频暂未接入 HyperFrames 渲染，当前链路回退 Selenium，避免服务器误走 Playwright[/yellow]")
         return _record_with_selenium(html_path, script, audio_path, output_filename)
     return _record_with_playwright(html_path, script, audio_path, output_filename)
 
