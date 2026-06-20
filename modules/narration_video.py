@@ -249,7 +249,11 @@ body{{width:{config.VIDEO_WIDTH}px;height:{config.VIDEO_HEIGHT}px;overflow:hidde
 
 /* 标题：向页面中部靠拢 */
 #title{{position:absolute;top:29%;left:50%;transform:translate(-50%,-50%);
-  font-size:48px;font-weight:700;letter-spacing:4px;color:rgba(255,255,255,0.7);
+  font-size:50px;font-weight:800;letter-spacing:3px;color:#16d9f2;
+  background:linear-gradient(90deg,#22e7ff 0%,#12cfe8 48%,#37f5ff 100%);
+  -webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;
+  text-shadow:0 0 18px rgba(18,207,232,0.3),0 0 42px rgba(34,231,255,0.12);
   text-align:center;width:calc(100% - 200px);max-width:880px;line-height:1.35;
   white-space:normal;overflow-wrap:normal;word-break:normal}}
 .title-line{{display:block;white-space:nowrap}}
@@ -257,10 +261,10 @@ body{{width:{config.VIDEO_WIDTH}px;height:{config.VIDEO_HEIGHT}px;overflow:hidde
 /* 句子区：1/2 处 */
 #sentence-area{{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
   text-align:center;display:flex;flex-direction:column;align-items:center;
-  width:calc(100% - 280px);max-width:800px}}
-#sentence{{font-size:52px;font-weight:700;letter-spacing:3px;line-height:1.4;
+  width:calc(100% - 220px);max-width:900px}}
+#sentence{{font-size:60px;font-weight:800;letter-spacing:2px;line-height:1.32;
   width:100%;max-width:100%;
-  transition:opacity 0.4s;text-shadow:0 0 40px rgba(255,255,255,0.15)}}
+  transition:opacity 0.4s;text-shadow:0 0 44px rgba(255,255,255,0.16)}}
 .sentence-line{{display:block;width:100%;white-space:normal;overflow-wrap:normal;
   word-break:normal;text-wrap:balance}}
 .sentence-enter{{animation:senIn 0.5s ease-out}}
@@ -494,11 +498,16 @@ setTimeout(()=>{{if(!window.__READY){{window.__READY=true;startTimeline();}}}},1
 
 def record_narration_video(html_path: str, output_filename: str = None) -> str:
     """录制口播视频（自动选择引擎）"""
-    engine = config.RECORD_ENGINE.lower()
+    engine = getattr(config, "NARRATION_RECORD_ENGINE", config.RECORD_ENGINE).lower()
+    if engine in {"hyperframes", "hf"}:
+        engine = "selenium"
     if engine == "selenium":
         return _record_narration_selenium(html_path, output_filename)
-    else:
+    try:
         return _record_narration_playwright(html_path, output_filename)
+    except Exception as exc:
+        console.print(f"[yellow]⚠️ Playwright 录制失败，尝试回退 Selenium: {exc}[/yellow]")
+        return _record_narration_selenium(html_path, output_filename)
 
 
 def _record_narration_selenium(html_path: str, output_filename: str = None) -> str:
