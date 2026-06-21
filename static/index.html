@@ -61,6 +61,10 @@ body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:radial-gr
 .preview h2{padding:18px;font-size:13px;font-weight:700;color:#aeb0c8;border-bottom:1px solid rgba(255,255,255,.05)}
 .player{flex:1;display:flex;align-items:center;justify-content:center;padding:16px}
 .player video{width:100%;border-radius:6px;max-height:65vh}
+.share-row{display:flex;gap:8px;padding:0 18px 12px;align-items:center}
+.share-row input{flex:1;min-width:0;padding:8px 10px;background:#10101e;border:1px solid rgba(180,183,220,.2);border-radius:7px;color:#cfd2ff;font-size:11px;outline:none}
+.share-row .btn-s{margin:0;white-space:nowrap}
+.share-tip{font-size:11px;color:#86efac;padding-right:18px;text-align:right;margin-top:-7px;margin-bottom:8px}
 .placeholder{text-align:center;color:#777991;font-size:13px}
 .placeholder .icon{font-size:40px;margin-bottom:8px;display:block}
 .imgs{padding:8px 18px;border-top:1px solid rgba(255,255,255,0.05);max-height:130px;overflow-y:auto}
@@ -270,6 +274,7 @@ function App(){
   const [generating,setGenerating]=useState(false);const [status,setStatus]=useState("");
   const [video,setVideo]=useState(null);const [title,setTitle]=useState("");const [images,setImages]=useState([]);
   const [selectedVideo,setSelectedVideo]=useState(null);
+  const [shareMsg,setShareMsg]=useState("");
   const [optimizedContent,setOptimizedContent]=useState("");
   const [review,setReview]=useState(null);
 
@@ -344,7 +349,30 @@ function App(){
   const play=(v)=>{
     setVideo(v.name);setTitle(v.title||v.name.replace(".mp4",""));
     setSelectedVideo(v);
+    setShareMsg("");
     if(v.type)setMode(v.type);
+  };
+  const shareUrl=()=>{
+    if(selectedVideo&&selectedVideo.share_url)return selectedVideo.share_url;
+    if(!video)return "";
+    return new URL(`${API_BASE}/watch/${encodeURIComponent(video)}`, window.location.href).href;
+  };
+  const openShare=()=>{
+    const url=shareUrl();
+    if(url)window.open(url,"_blank","noopener,noreferrer");
+  };
+  const copyShare=async()=>{
+    const url=shareUrl();
+    if(!url)return;
+    try{
+      await navigator.clipboard.writeText(url);
+      setShareMsg("链接已复制");
+    }catch(e){
+      const input=document.createElement("input");
+      input.value=url;document.body.appendChild(input);input.select();document.execCommand("copy");document.body.removeChild(input);
+      setShareMsg("链接已复制");
+    }
+    setTimeout(()=>setShareMsg(""),1800);
   };
 
   return React.createElement(React.Fragment,null,
@@ -379,9 +407,15 @@ function App(){
     React.createElement("div",{className:"preview"},
       React.createElement("h2",null,"▶️ 预览"),
       React.createElement("div",{className:"player"},
-        video?React.createElement("video",{controls:true,autoPlay:true,src:`${API_BASE}/output/${video}`}):
+        video?React.createElement("video",{controls:true,autoPlay:true,src:`${API_BASE}/output/${encodeURIComponent(video)}`}):
         React.createElement("div",{className:"placeholder"},React.createElement("span",{className:"icon"},"🎥"),"选择视频播放")
       ),
+      video?React.createElement("div",{className:"share-row"},
+        React.createElement("input",{readOnly:true,value:shareUrl(),onFocus:e=>e.target.select()}),
+        React.createElement("button",{className:"btn btn-s",onClick:openShare},"打开"),
+        React.createElement("button",{className:"btn btn-s btn-secondary",onClick:copyShare},"复制")
+      ):null,
+      shareMsg?React.createElement("div",{className:"share-tip"},shareMsg):null,
       images.length>0?React.createElement("div",{className:"imgs"},React.createElement("h3",null,"🖼️ 图片"),React.createElement("div",null,...images.map((u,i)=>React.createElement("img",{key:i,src:API_BASE+u})))):null,
       review?React.createElement(ScriptReviewPanel,{
         review,

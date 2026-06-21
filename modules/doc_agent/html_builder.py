@@ -139,7 +139,7 @@ code{{font-family:Consolas,"Cascadia Code",monospace;font-size:25px;line-height:
 .layout-summary .card{{min-height:124px;border-radius:30px;background:#0f172a;color:#fff}}
 .layout-summary .card::before{{background:rgba(255,255,255,.14);color:#93c5fd}}
 .layout-summary .card b{{color:#fff;font-size:34px}}
-.footer{{z-index:3;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;margin-top:auto;min-height:0;padding-bottom:6px}}
+.footer{{z-index:3;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;margin-top:auto;min-height:0;padding-bottom:42px}}
 .caption{{padding:28px 40px 24px;background:rgba(255,255,255,.76);border:1px solid rgba(15,23,42,.08);border-radius:28px;box-shadow:0 18px 46px rgba(15,23,42,.08),inset 0 2px 4px rgba(255,255,255,.75);font-size:28px;line-height:1.43;font-weight:760;color:#263447;max-height:250px;overflow:visible;text-align:left}}
 .caption-long{{font-size:25px;line-height:1.4}}
 .caption-xl{{font-size:22px;line-height:1.36}}
@@ -434,13 +434,12 @@ tl.to("{selector} .media-main", {{scale:1,x:0,y:0,duration:.62,ease:"power2.out"
         elif media_order == 2:
             main_motion_js = f"""
 tl.set("{selector} .media-main", {{transformOrigin:"50% 46%"}}, {start + .70:.2f});
-tl.fromTo("{selector} .media-main", {{scale:1.01,x:0,y:0}}, {{scale:1.54,x:0,y:"8%",duration:.72,ease:"power2.inOut"}}, {start + .92:.2f});
-tl.to("{selector} .media-main", {{scale:1.54,x:0,y:"-10%",duration:1.12,ease:"power1.inOut"}}, {start + 1.66:.2f});
-tl.to("{selector} .media-main", {{scale:1,x:0,y:0,duration:.62,ease:"power2.out"}}, {start + 2.82:.2f});
+tl.fromTo("{selector} .media-main", {{scale:.96,y:34,rotationZ:-1.2,filter:"brightness(.96)"}}, {{scale:1.02,y:0,rotationZ:0,filter:"brightness(1)",duration:.78,ease:"back.out(1.16)"}}, {start + .92:.2f});
+tl.to("{selector} .media-main", {{scale:1.055,y:-10,rotationZ:.35,duration:{move_duration:.2f},ease:"none"}}, {start + 1.70:.2f});
 """
         else:
             main_motion_js = f"""
-tl.fromTo("{selector} .media-main", {{scale:1.01,x:0,y:0}}, {{scale:1.06,x:10,y:-8,duration:{move_duration:.2f},ease:"none"}}, {start + .72:.2f});
+tl.fromTo("{selector} .media-main", {{scale:.98,x:-18,y:18,rotationZ:.8}}, {{scale:1.04,x:10,y:-8,rotationZ:0,duration:{move_duration:.2f},ease:"power1.out"}}, {start + .72:.2f});
 """
         media_js = f"""
 tl.fromTo("{selector} .media-frame", {image_from}, {image_to}, {start + .58:.2f});

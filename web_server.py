@@ -5,6 +5,8 @@
 import os, sys, json, uuid, re as regex, shutil
 from pathlib import Path
 from datetime import datetime
+from html import escape
+from urllib.parse import quote
 from rich.console import Console
 
 console = Console()
@@ -99,6 +101,18 @@ def _save_video_metadata(data):
     except Exception as exc:
         console.print(f"[yellow]⚠️ 视频已生成，但元数据保存失败: {exc}[/yellow]")
         return False
+
+
+def _video_public_urls(request: Request, filename: str) -> dict:
+    safe_name = Path(filename).name
+    base = str(request.base_url).rstrip("/")
+    quoted = quote(safe_name)
+    return {
+        "url": f"/output/{quoted}",
+        "watch_url": f"/watch/{quoted}",
+        "share_url": f"{base}/watch/{quoted}",
+        "download_url": f"{base}/output/{quoted}",
+    }
 
 
 def _generate_science_video(task_id, topic, voice, voice_api_type, theme, name, avatar, company, slogan, profile_id=""):
@@ -835,13 +849,14 @@ async def api_status(task_id: str):
             "script": t.get("script")}
 
 @app.get("/video-api/videos")
-async def api_videos():
+async def api_videos(request: Request):
     from modules.db import list_videos
     records = list_videos()
     by_filename = {v["filename"]: v for v in records}
     vids = []
     for f in sorted(VIDEO_OUTPUT.glob("*.mp4"), key=os.path.getmtime, reverse=True):
         record = by_filename.get(f.name, {})
+        public_urls = _video_public_urls(request, f.name)
         vids.append({
             **record,
             "name": f.name,
@@ -849,9 +864,44 @@ async def api_videos():
             "voice_type": record.get("voice_type", 1),
             "size": f.stat().st_size,
             "time": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
-            "url": f"/output/{f.name}",
+            **public_urls,
         })
     return {"videos": vids}
+
+
+@app.get("/watch/{filename:path}")
+async def watch_video(filename: str):
+    safe_name = Path(filename).name
+    video_path = VIDEO_OUTPUT / safe_name
+    if not video_path.exists() or video_path.suffix.lower() != ".mp4":
+        return JSONResponse({"error": "video not found"}, status_code=404)
+    video_src = f"/output/{quote(safe_name)}"
+    title = safe_name.removesuffix(".mp4")
+    page_title = escape(title)
+    escaped_name = escape(safe_name)
+    return HTMLResponse(f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{page_title}</title>
+<style>
+*{{box-sizing:border-box}}body{{margin:0;min-height:100vh;background:#080812;color:#f4f4fb;font-family:"Microsoft YaHei","PingFang SC",sans-serif;display:grid;place-items:center;padding:24px}}
+.wrap{{width:min(1080px,100%)}}
+h1{{font-size:18px;line-height:1.4;margin:0 0 14px;color:#e5e7ff;font-weight:800}}
+video{{width:100%;max-height:86vh;background:#000;border-radius:8px;box-shadow:0 22px 80px rgba(0,0,0,.36)}}
+.bar{{display:flex;justify-content:space-between;gap:12px;margin-top:12px;font-size:13px;color:#aaaac2}}
+a{{color:#a5b4fc;text-decoration:none}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <h1>{page_title}</h1>
+  <video controls autoplay src="{video_src}"></video>
+  <div class="bar"><span>{escaped_name}</span><a href="{video_src}" download>下载视频</a></div>
+</main>
+</body>
+</html>""")
 
 app.mount("/output", StaticFiles(directory=str(VIDEO_OUTPUT)), name="output")
 
