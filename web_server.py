@@ -105,12 +105,12 @@ def _save_video_metadata(data):
 
 def _video_public_urls(request: Request, filename: str) -> dict:
     safe_name = Path(filename).name
-    base = str(request.base_url).rstrip("/")
+    base = (config.PUBLIC_BASE_URL or str(request.base_url)).rstrip("/")
     quoted = quote(safe_name)
     return {
         "url": f"/output/{quoted}",
-        "watch_url": f"/watch/{quoted}",
-        "share_url": f"{base}/watch/{quoted}",
+        "watch_url": f"/video-api/watch/{quoted}",
+        "share_url": f"{base}/video-api/watch/{quoted}",
         "download_url": f"{base}/output/{quoted}",
     }
 
@@ -392,7 +392,7 @@ def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, 
         config.TEMP_DIR = orig_temp
 
 
-def _generate_doc_agent_video(task_id, topic, source, audience, style, visual_style, duration, focus, voice, voice_api_type, name, avatar, company, slogan, profile_id=""):
+def _generate_doc_agent_video(task_id, topic, source, audience, style, visual_style, duration, focus, voice, voice_api_type, name, avatar, company, slogan, profile_id="", request_headers=""):
     orig_temp = config.TEMP_DIR
     try:
         work_dir = _fresh_task_dir(task_id)
@@ -410,17 +410,18 @@ def _generate_doc_agent_video(task_id, topic, source, audience, style, visual_st
             topic=topic,
             source=source,
             audience=audience or "beginner",
-            style=style or "tech_explainer",
-            visual_style=visual_style or "bright_unified",
-            duration=int(duration or 90),
+            style=style or "news_analysis",
+            visual_style=visual_style or "dark_premium",
+            duration=int(duration or 60),
             focus=focus or "",
             voice_id=voice or "",
             voice_type=voice_api_type,
             output_filename=filename,
             record=True,
+            request_headers=request_headers or "",
         )
 
-        title = topic or source or "文档视频"
+        title = topic or source or "项目视频"
         metadata_saved = _save_video_metadata({
             "filename": Path(video_path).name,
             "type": "doc-agent",
@@ -435,7 +436,7 @@ def _generate_doc_agent_video(task_id, topic, source, audience, style, visual_st
             "voice_id": voice,
             "voice_type": voice_api_type,
             "theme": style,
-            "script": {"visual_style": visual_style or "bright_unified"},
+            "script": {"visual_style": visual_style or "dark_premium"},
         })
 
         tasks[task_id].update({
@@ -454,7 +455,7 @@ def _generate_doc_agent_video(task_id, topic, source, audience, style, visual_st
         config.TEMP_DIR = orig_temp
 
 
-def _prepare_doc_agent_review(task_id, topic, source, audience, style, visual_style, duration, focus, voice, voice_api_type, name, avatar, company, slogan, profile_id=""):
+def _prepare_doc_agent_review(task_id, topic, source, audience, style, visual_style, duration, focus, voice, voice_api_type, name, avatar, company, slogan, profile_id="", request_headers=""):
     orig_temp = config.TEMP_DIR
     try:
         work_dir = _fresh_task_dir(task_id)
@@ -474,12 +475,13 @@ def _prepare_doc_agent_review(task_id, topic, source, audience, style, visual_st
             "visual_style": visual_style, "duration": duration, "focus": focus,
             "voice": voice, "voice_api_type": voice_api_type, "name": name,
             "avatar": avatar, "company": company, "slogan": slogan, "profile_id": profile_id,
+            "request_headers": request_headers or "",
         }
 
         _set_task(task_id, "collecting", "📚 内容采集智能体正在收集资料...")
         from modules.doc_agent.loader import collect_content
         from modules.doc_agent.planner import generate_page_script
-        bundle = collect_content(topic=topic, source=source)
+        bundle = collect_content(topic=topic, source=source, request_headers=request_headers or "")
         tasks[task_id]["bundle"] = bundle
         (work_dir / "content_bundle.json").write_text(
             json.dumps(bundle.to_dict(), ensure_ascii=False, indent=2),
@@ -490,9 +492,9 @@ def _prepare_doc_agent_review(task_id, topic, source, audience, style, visual_st
         script = generate_page_script(
             bundle,
             audience=audience or "beginner",
-            style=style or "tech_explainer",
-            visual_style=visual_style or "bright_unified",
-            duration=int(duration or 90),
+            style=style or "news_analysis",
+            visual_style=visual_style or "dark_premium",
+            duration=int(duration or 60),
             focus=focus or "",
             work_dir=str(work_dir),
         )
@@ -529,9 +531,9 @@ def _revise_doc_agent_review(task_id, feedback):
         script = generate_page_script(
             bundle,
             audience=params.get("audience") or "beginner",
-            style=params.get("style") or "tech_explainer",
-            visual_style=params.get("visual_style") or "bright_unified",
-            duration=int(params.get("duration") or 90),
+            style=params.get("style") or "news_analysis",
+            visual_style=params.get("visual_style") or "dark_premium",
+            duration=int(params.get("duration") or 60),
             focus=revision_focus,
             work_dir=str(work_dir),
         )
@@ -567,10 +569,10 @@ def _continue_doc_agent_video(task_id):
 
         pages = [PageSpec(**page) for page in script_data.get("pages", [])]
         script = PageScript(
-            title=script_data.get("title") or params.get("topic") or "文档视频",
+            title=script_data.get("title") or params.get("topic") or "项目视频",
             audience=script_data.get("audience") or params.get("audience") or "beginner",
-            style=script_data.get("style") or params.get("style") or "tech_explainer",
-            visual_style=script_data.get("visual_style") or params.get("visual_style") or "bright_unified",
+            style=script_data.get("style") or params.get("style") or "news_analysis",
+            visual_style=script_data.get("visual_style") or params.get("visual_style") or "dark_premium",
             pages=pages,
         )
 
@@ -590,7 +592,7 @@ def _continue_doc_agent_video(task_id):
         filename = _safe_video_name(params.get("topic") or params.get("source") or script.title or "doc-agent")
         video_path = render_document_video(script, str(work_dir), output_filename=filename, record=True)
 
-        title = script.title or params.get("topic") or params.get("source") or "文档视频"
+        title = script.title or params.get("topic") or params.get("source") or "项目视频"
         metadata_saved = _save_video_metadata({
             "filename": Path(video_path).name,
             "type": "doc-agent",
@@ -604,7 +606,7 @@ def _continue_doc_agent_video(task_id):
             "slogan": params.get("slogan") or "",
             "voice_id": params.get("voice") or "",
             "voice_type": int(params.get("voice_api_type") or 1),
-            "theme": params.get("style") or "tech_explainer",
+            "theme": params.get("style") or "news_analysis",
             "script": script.to_dict(),
         })
         tasks[task_id].update({
@@ -806,17 +808,20 @@ async def api_narration(req: Request, bg: BackgroundTasks):
 @app.post("/video-api/generate/doc-agent")
 async def api_doc_agent(req: Request, bg: BackgroundTasks):
     d = await req.json()
+    style = (d.get("style") or "").strip()
+    if style not in {"github_intro", "news_analysis", "paper_analysis"}:
+        return JSONResponse({"error": "content style required"}, 400)
     tid = uuid.uuid4().hex[:12]
     tasks[tid] = {"id": tid, "status": "starting", "detail": "启动中...", "type": "doc-agent",
                   "topic": d.get("topic", "") or d.get("source", ""), "created": datetime.now().isoformat()}
     bg.add_task(_prepare_doc_agent_review, tid,
                 d.get("topic", ""), d.get("source", ""), d.get("audience", "beginner"),
-                d.get("style", "tech_explainer"), d.get("visual_style", "bright_unified"),
-                int(d.get("duration", 90)),
+                style, d.get("visual_style", "dark_premium"),
+                int(d.get("duration", 60)),
                 d.get("focus", ""), d.get("voice", "") or d.get("voice_id", ""),
                 int(d.get("voice_api_type", 1)),
                 d.get("name", ""), d.get("avatar", ""), d.get("company", ""), d.get("slogan", ""),
-                d.get("profile_id", ""))
+                d.get("profile_id", ""), d.get("request_headers", ""))
     return {"task_id": tid}
 
 @app.post("/video-api/generate/doc-agent/{task_id}/revise")
@@ -869,8 +874,7 @@ async def api_videos(request: Request):
     return {"videos": vids}
 
 
-@app.get("/watch/{filename:path}")
-async def watch_video(filename: str):
+async def _watch_video_response(filename: str):
     safe_name = Path(filename).name
     video_path = VIDEO_OUTPUT / safe_name
     if not video_path.exists() or video_path.suffix.lower() != ".mp4":
@@ -902,6 +906,17 @@ a{{color:#a5b4fc;text-decoration:none}}
 </main>
 </body>
 </html>""")
+
+
+@app.get("/watch/{filename:path}")
+async def watch_video(filename: str):
+    return await _watch_video_response(filename)
+
+
+@app.get("/video-api/watch/{filename:path}")
+async def api_watch_video(filename: str):
+    return await _watch_video_response(filename)
+
 
 app.mount("/output", StaticFiles(directory=str(VIDEO_OUTPUT)), name="output")
 

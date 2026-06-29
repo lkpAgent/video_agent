@@ -158,19 +158,23 @@ def _record_with_screenshots(html_path: str, output_dir: str, duration: float) -
 
 
 def _record_timeline_frames(driver, ffmpeg_proc, fps: int, duration: float):
-    """科普/图文模式：启动 JS 时间线，按帧率连续截图"""
+    """科普/图文模式：按帧确定性渲染，避免浏览器实时动画掉帧导致音画错位。"""
     total_frames = int(duration * fps)
-    driver.execute_script("window.__READY = true;")
+    has_render_at = bool(driver.execute_script("return typeof window.__renderAt === 'function';"))
+    if not has_render_at:
+        driver.execute_script("window.__READY = true;")
     
     with Progress() as progress:
         task = progress.add_task("[cyan]录制中...", total=total_frames)
         frame_interval = 1.0 / fps
         for i in range(total_frames):
             start_tick = time.perf_counter()
+            if has_render_at:
+                driver.execute_script("window.__renderAt(arguments[0]);", i / fps)
             png = driver.get_screenshot_as_png()
             ffmpeg_proc.stdin.write(png)
             elapsed = time.perf_counter() - start_tick
-            sleep_time = frame_interval - elapsed
+            sleep_time = 0 if has_render_at else frame_interval - elapsed
             if sleep_time > 0:
                 time.sleep(sleep_time)
             progress.advance(task)

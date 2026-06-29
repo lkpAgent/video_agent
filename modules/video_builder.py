@@ -502,6 +502,10 @@ def _record_with_playwright(html_path: str, script: dict, audio_path: str, outpu
                 f"--window-size={config.VIDEO_WIDTH},{config.VIDEO_HEIGHT}",
                 "--autoplay-policy=no-user-gesture-required",
                 "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
             ]
         )
 

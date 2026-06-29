@@ -19,19 +19,20 @@ def build_document_video(
     topic: str = "",
     source: str = "",
     audience: str = "beginner",
-    style: str = "tech_explainer",
-    visual_style: str = "bright_unified",
-    duration: int = 90,
+    style: str = "news_analysis",
+    visual_style: str = "dark_premium",
+    duration: int = 60,
     focus: str = "",
     voice_id: str = "",
     voice_type: int = 1,
     output_filename: str = "",
     record: bool = True,
+    request_headers: str = "",
 ) -> str:
     work_dir = Path(config.TEMP_DIR) / "doc_agent"
     work_dir.mkdir(parents=True, exist_ok=True)
     console.print(Panel.fit(
-        f"[bold cyan]Doc Agent 文档视频模式[/bold cyan]\n"
+        f"[bold cyan]Doc Agent 项目视频模式[/bold cyan]\n"
         f"主题: [yellow]{topic or '-'}[/yellow]\n"
         f"来源: [yellow]{source or '-'}[/yellow]\n"
         f"观众: [yellow]{audience}[/yellow]  内容风格: [yellow]{style}[/yellow]\n"
@@ -40,7 +41,7 @@ def build_document_video(
     ))
 
     console.print("[bold]Step 1/5: 内容采集智能体收集资料[/bold]")
-    bundle = collect_content(topic=topic, source=source)
+    bundle = collect_content(topic=topic, source=source, request_headers=request_headers)
     (work_dir / "content_bundle.json").write_text(
         json.dumps(bundle.to_dict(), ensure_ascii=False, indent=2),
         encoding="utf-8",

@@ -361,13 +361,14 @@ def main():
     parser.add_argument("--bgm", type=str, help="[gallery] 背景音乐文件路径")
     # 文档重构智能体模式
     parser.add_argument("--source", type=str, help="[doc-agent] 文档路径、URL 或 GitHub 仓库")
+    parser.add_argument("--request-headers", type=str, default="", help="[doc-agent] URL 采集时使用的请求头文本")
     parser.add_argument("--audience", type=str, default="beginner",
                         help="[doc-agent] 目标观众，如 beginner/technical/product")
-    parser.add_argument("--duration", type=int, default=90, help="[doc-agent] 目标视频时长（秒）")
-    parser.add_argument("--style", type=str, default="tech_explainer",
-                        help="[doc-agent] 内容风格，如 tech_explainer/github_intro/product_doc")
+    parser.add_argument("--duration", type=int, default=60, help="[doc-agent] 目标视频时长（秒）")
+    parser.add_argument("--style", type=str, default="news_analysis",
+                        help="[doc-agent] 内容风格: github_intro/news_analysis/paper_analysis")
     parser.add_argument("--visual-style", type=str, choices=["bright_unified", "dark_premium"],
-                        default="bright_unified", help="[doc-agent] 页面视觉主题")
+                        default="dark_premium", help="[doc-agent] 页面视觉主题")
     parser.add_argument("--focus", type=str, default="", help="[doc-agent] 希望重点讲解的方向")
 
     args = parser.parse_args()
@@ -395,9 +396,10 @@ def main():
                 voice_type=args.voice_type,
                 output_filename=args.output or "",
                 record=not args.no_record,
+                request_headers=args.request_headers or "",
             )
         except Exception as e:
-            console.print(f"[red]文档视频生成失败: {e}[/red]")
+            console.print(f"[red]项目视频生成失败: {e}[/red]")
             import traceback
             traceback.print_exc()
             return
@@ -407,7 +409,7 @@ def main():
             save_video({
                 "filename": Path(video_path).name,
                 "type": "doc-agent",
-                "title": args.topic or args.source or "文档视频",
+                "title": args.topic or args.source or "项目视频",
                 "topic": args.topic or args.source or "",
                 "content": args.source or args.topic or "",
                 "voice_id": args.voice or config.TTS_VOICE,
@@ -416,7 +418,7 @@ def main():
             })
         console.print()
         console.print(Panel.fit(
-            f"[bold green]文档视频生成完成[/bold green]\n\n"
+            f"[bold green]项目视频生成完成[/bold green]\n\n"
             f"输出: [cyan]{video_path}[/cyan]",
             border_style="green"
         ))

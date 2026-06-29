@@ -55,17 +55,20 @@ def analyze_media_assets(
 
 def _analyze_one(asset: MediaAsset, project_title: str, readme_excerpt: str) -> dict:
     prompt = (
-        "你是技术短视频的视觉素材理解智能体。请理解这张来自官方 README/项目文档的图片，"
-        "判断它是否适合放进项目介绍视频中，以及适合支撑哪类页面。\n"
-        f"项目/文档标题：{project_title or '未知'}\n"
+        "你是短视频正文配图的视觉素材理解智能体。请理解这张来自 GitHub、资讯文章、论文或文档的图片，"
+        "判断它是否适合放进正文讲解视频中，以及适合支撑哪类页面。\n"
+        "只有直接展示正文对象、现场、产品界面、技术流程、架构图、实验图表或结果截图的图片才适合入镜。\n"
+        "如果图片只是媒体/作者头像、logo、品牌标识、水印、二维码、广告、装饰图或与正文事实无关的封面图，"
+        "必须输出 use_in_video:false。\n"
+        f"资料标题：{project_title or '未知'}\n"
         f"图片 alt/title：{asset.alt or asset.title}\n"
-        f"README 摘要：{(readme_excerpt or '')[:1200]}\n\n"
+        f"正文摘要：{(readme_excerpt or '')[:1200]}\n\n"
         "请只输出 JSON，不要 markdown。格式：\n"
         "{"
         "\"title\":\"给图片起一个短标题\","
-        "\"description\":\"用中文说明图片主要展示了什么，以及和项目价值/功能的关系，80-160字\","
+        "\"description\":\"用中文说明图片主要展示了什么，以及它直接支撑了正文里的哪个事实或观点，80-160字\","
         "\"tags\":[\"功能关键词\"],"
-        "\"suggested_pages\":[\"适合放入的页面主题，如产品效果/工作流/架构/使用界面/对比/结果展示\"],"
+        "\"suggested_pages\":[\"适合放入的页面主题，如现场/正文对象/产品效果/工作流/架构/使用界面/对比/结果展示\"],"
         "\"use_in_video\":true"
         "}"
     )

@@ -73,9 +73,13 @@ class Config:
     ELEVENLABS_MODEL: str = os.getenv("ELEVENLABS_MODEL", "eleven_multilingual_v2")
 
     # ======== 视频配置 ========
+    # 对外访问的站点根地址；有端口、域名或反代路径时建议显式配置，例如 http://113.240.110.92:82
+    PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
     # 录制引擎: selenium(Firefox) / playwright / hyperframes(HF CLI)
     RECORD_ENGINE: str = os.getenv("RECORD_ENGINE", "selenium")
     RECORD_FALLBACK_TO_SELENIUM: bool = os.getenv("RECORD_FALLBACK_TO_SELENIUM", "true").lower() == "true"
+    # URL 正文采集的浏览器引擎: selenium(Firefox) / playwright / none
+    DOC_AGENT_BROWSER_ENGINE: str = os.getenv("DOC_AGENT_BROWSER_ENGINE", "selenium")
     # 口播视频单独录制引擎；未配置时跟随 RECORD_ENGINE，但 hyperframes 模式下回退 selenium
     _narration_record_engine = os.getenv("NARRATION_RECORD_ENGINE", "").strip()
     NARRATION_RECORD_ENGINE: str = (

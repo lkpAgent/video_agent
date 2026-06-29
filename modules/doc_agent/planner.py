@@ -21,21 +21,22 @@ MIN_MEDIA_RELEVANCE_SCORE = 6
 def generate_page_script(
     bundle: ContentBundle,
     audience: str = "beginner",
-    style: str = "tech_explainer",
-    visual_style: str = "bright_unified",
-    duration: int = 90,
+    style: str = "news_analysis",
+    visual_style: str = "dark_premium",
+    duration: int = 60,
     focus: str = "",
     work_dir: str = "",
 ) -> PageScript:
+    style = _normalize_content_style(style)
     console.print("[bold]Step 2/5: 页面文案智能体重组内容[/bold]")
     bundle_json = json.dumps(bundle.to_dict(), ensure_ascii=False, indent=2)
     client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL)
-    user_prompt = CONTENT_PLANNER_USER.format(
+    user_prompt = _render_content_planner_prompt(
         title=bundle.title,
         audience=audience,
         style=style,
-        style_instruction=STYLE_INSTRUCTIONS.get(style, STYLE_INSTRUCTIONS["tech_explainer"]),
-        duration=duration,
+        style_instruction=STYLE_INSTRUCTIONS.get(style, STYLE_INSTRUCTIONS["news_analysis"]),
+        duration=str(duration),
         focus=focus or "无",
         bundle_json=bundle_json[:30000],
     )
@@ -61,6 +62,19 @@ def generate_page_script(
     return script
 
 
+def _normalize_content_style(style: str) -> str:
+    normalized = (style or "").strip()
+    aliases = {
+        "tech_explainer": "news_analysis",
+        "product_doc": "news_analysis",
+        "paper_brief": "paper_analysis",
+        "paper": "paper_analysis",
+        "news": "news_analysis",
+        "article": "news_analysis",
+    }
+    return aliases.get(normalized, normalized or "news_analysis")
+
+
 def _parse_json(raw: str) -> dict:
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
@@ -68,6 +82,13 @@ def _parse_json(raw: str) -> dict:
     if match:
         raw = match.group(0)
     return json.loads(raw)
+
+
+def _render_content_planner_prompt(**values: str) -> str:
+    prompt = CONTENT_PLANNER_USER
+    for key, value in values.items():
+        prompt = prompt.replace("{" + key + "}", str(value))
+    return prompt
 
 
 def _coerce_script(
@@ -80,7 +101,7 @@ def _coerce_script(
 ) -> PageScript:
     pages_raw = data.get("pages") or []
     if not isinstance(pages_raw, list) or not pages_raw:
-        pages_raw = _fallback_pages(bundle)
+        raise ValueError("LLM 未生成可用页面脚本，请调整输入内容后重试")
     pages: list[PageSpec] = []
     for idx, item in enumerate(pages_raw[:8], 1):
         page_type = str(item.get("page_type") or "concept")
@@ -94,14 +115,8 @@ def _coerce_script(
             bullets = [str(bullets)]
         bullets = [str(b).strip()[:28] for b in bullets if str(b).strip()][:4]
         narration = _compact_narration(str(item.get("narration") or item.get("subtitle") or item.get("title") or "").strip())
-        bullets = _ensure_page_density(
-            page_type=page_type,
-            title=str(item.get("title") or bundle.title),
-            subtitle=str(item.get("subtitle") or ""),
-            narration=narration,
-            bullets=bullets,
-            code=str(item.get("code") or ""),
-        )
+        if not _has_enough_page_content(page_type, str(item.get("subtitle") or ""), narration, bullets, str(item.get("code") or "")):
+            continue
         duration = float(item.get("duration") or max(6, min(16, len(narration) / 5)))
         pages.append(PageSpec(
             page_id=str(item.get("page_id") or f"p{idx}"),
@@ -119,7 +134,9 @@ def _coerce_script(
     if pages:
         pages[0].page_type = "hero"
         pages[-1].page_type = "summary"
-    pages = _limit_install_pages(pages, style, bundle)
+        _polish_pages_for_style(pages, style)
+    if not pages:
+        raise ValueError("LLM 生成的页面缺少可信内容，请调整输入内容后重试")
     _attach_media_assets(pages, bundle)
     total = sum(p.duration for p in pages) or 1
     if target_duration > 0:
@@ -133,6 +150,52 @@ def _coerce_script(
         visual_style=visual_style,
         pages=pages,
     )
+
+
+def _polish_pages_for_style(pages: list[PageSpec], style: str) -> None:
+    if not pages:
+        return
+    final_page = pages[-1]
+    if style == "news_analysis":
+        _neutralize_summary_page(final_page, "关键观察")
+    elif style == "paper_analysis":
+        _neutralize_summary_page(final_page, "核心结论")
+
+
+def _neutralize_summary_page(page: PageSpec, fallback_title: str) -> None:
+    if _looks_like_forced_engagement(page.title):
+        page.title = fallback_title
+    page.bullets = [
+        _neutralize_engagement_text(text)
+        for text in page.bullets
+        if not _is_pure_engagement_line(text)
+    ][:4]
+    page.narration = _neutralize_engagement_text(page.narration)
+
+
+def _looks_like_forced_engagement(text: str) -> bool:
+    compact = re.sub(r"\s+", "", text or "")
+    return any(pattern in compact for pattern in (
+        "适合谁收藏", "适合谁关注", "收藏关注", "值得收藏", "建议收藏",
+    ))
+
+
+def _is_pure_engagement_line(text: str) -> bool:
+    compact = re.sub(r"\s+", "", text or "")
+    return compact in {"收藏关注", "建议收藏", "值得收藏", "适合收藏", "持续关注"}
+
+
+def _neutralize_engagement_text(text: str) -> str:
+    result = text or ""
+    result = re.sub(r"适合谁(?:收藏关注|收藏|关注)[？?，,：:\s]*", "", result)
+    replacements = {
+        "收藏关注": "继续观察",
+        "建议收藏": "可以留意",
+        "值得收藏": "值得了解",
+    }
+    for old, new in replacements.items():
+        result = result.replace(old, new)
+    return result.strip()
 
 
 def _compact_title(text: str) -> str:
@@ -151,14 +214,7 @@ def _compact_title(text: str) -> str:
 
 
 def _compact_narration(text: str) -> str:
-    text = re.sub(r"\s+", " ", (text or "").strip())
-    if len(text) <= 60:
-        return text
-    for mark in "。！？!?；;":
-        pos = text.rfind(mark, 0, 58)
-        if pos >= 24:
-            return text[:pos + 1]
-    return text[:58].rstrip(" ，,。；;：:") + "。"
+    return re.sub(r"\s+", " ", (text or "").strip())
 
 
 def _attach_media_assets(pages: list[PageSpec], bundle: ContentBundle) -> None:
@@ -166,8 +222,10 @@ def _attach_media_assets(pages: list[PageSpec], bundle: ContentBundle) -> None:
         asset for asset in getattr(bundle, "media_assets", [])
         if asset.kind == "image" and asset.local_path and getattr(asset, "description", "").strip()
     ]
+    assets = [asset for asset in assets if not _is_non_content_media_asset(_asset_text(asset))]
     if not assets:
         return
+    console.print(f"[dim]   可用图片素材: {len(assets)} 张，开始匹配页面[/dim]")
     by_id = {asset.asset_id: asset for asset in assets if asset.asset_id}
     used: set[str] = set()
     rejected_pages: set[str] = set()
@@ -182,6 +240,7 @@ def _attach_media_assets(pages: list[PageSpec], bundle: ContentBundle) -> None:
         if asset and asset.asset_id not in used and _is_media_relevant(page, asset):
             _set_page_media(page, asset)
             used.add(asset.asset_id)
+            console.print(f"[dim]   图片 {asset.asset_id} 已按 LLM 选择挂到页面: {page.title}[/dim]")
         elif page.media_asset_id:
             rejected_pages.add(page.page_id)
             page.media_usage_reason = ""
@@ -201,6 +260,7 @@ def _attach_media_assets(pages: list[PageSpec], bundle: ContentBundle) -> None:
             (_media_relevance_score(page, asset), asset)
             for asset in assets
             if (asset.asset_id or asset.local_path) not in used
+            and not _is_non_content_media_asset(_asset_text(asset))
         ]
         scored.sort(key=lambda item: item[0], reverse=True)
         if not scored:
@@ -210,8 +270,46 @@ def _attach_media_assets(pages: list[PageSpec], bundle: ContentBundle) -> None:
             continue
         _set_page_media(page, asset)
         used.add(asset.asset_id or asset.local_path)
+        console.print(f"[dim]   图片 {asset.asset_id} 已自动挂到页面: {page.title} score={score}[/dim]")
         if len(used) >= min(MAX_MEDIA_PAGES, len(assets)):
             break
+    _attach_fallback_media(pages, assets, used, rejected_pages)
+
+
+def _attach_fallback_media(
+    pages: list[PageSpec],
+    assets: list,
+    used: set[str],
+    rejected_pages: set[str],
+) -> None:
+    if used or not assets:
+        return
+    candidates = [
+        page for page in pages
+        if page.page_type not in {"hero", "code_demo", "summary"}
+        and not page.media_path
+        and page.page_id not in rejected_pages
+    ]
+    if not candidates:
+        return
+    for page in candidates:
+        if len(used) >= min(MAX_MEDIA_PAGES, len(assets), len(candidates)):
+            break
+        scored = [
+            (_media_relevance_score(page, asset), asset)
+            for asset in assets
+            if (asset.asset_id or asset.local_path) not in used
+            and not _is_non_content_media_asset(_asset_text(asset))
+        ]
+        scored.sort(key=lambda item: item[0], reverse=True)
+        if not scored:
+            break
+        score, asset = scored[0]
+        if score < MIN_MEDIA_RELEVANCE_SCORE:
+            continue
+        _set_page_media(page, asset)
+        used.add(asset.asset_id or asset.local_path)
+        console.print(f"[dim]   图片 {asset.asset_id} 已作为相关正文配图挂到页面: {page.title} score={score}[/dim]")
 
 
 def _set_page_media(page: PageSpec, asset) -> None:
@@ -233,14 +331,9 @@ def _media_relevance_score(page: PageSpec, asset) -> int:
     ]).lower()
     usage_reason = getattr(page, "media_usage_reason", "").lower()
     page_text = " ".join([core_page_text, usage_reason]).lower()
-    asset_parts = [
-        asset.title,
-        asset.alt,
-        asset.description,
-        " ".join(getattr(asset, "tags", []) or []),
-        " ".join(getattr(asset, "suggested_pages", []) or []),
-    ]
-    asset_text = " ".join(asset_parts).lower()
+    asset_text = _asset_text(asset)
+    if _is_non_content_media_asset(asset_text):
+        return -100
     score = 0
     for token in _keywords(page_text):
         if token and token in asset_text:
@@ -254,19 +347,75 @@ def _media_relevance_score(page: PageSpec, asset) -> int:
         score -= 12
     if usage_reason and _is_weak_media_reason(usage_reason, core_page_text):
         score -= 8
+    if _is_news_scene_asset(asset_text) and _page_can_use_news_scene(core_page_text, page.page_type):
+        score += 5
     page_type_map = {
-        "workflow": ("流程", "工作流", "workflow", "pipeline"),
+        "workflow": ("流程", "工作流", "落地", "应用", "workflow", "pipeline"),
         "feature_cards": ("功能", "能力", "feature", "capability"),
         "comparison": ("对比", "差异", "compare"),
-        "metrics": ("结果", "效果", "指标", "result"),
-        "concept": ("架构", "原理", "概念", "architecture"),
-        "problem": ("痛点", "问题", "场景", "problem"),
+        "metrics": ("结果", "效果", "指标", "数字", "数据", "result"),
+        "concept": ("架构", "原理", "概念", "现场", "赛道", "大赛", "赛事", "技术", "architecture"),
+        "problem": ("痛点", "问题", "场景", "背景", "事实", "problem"),
     }
     if any(key in asset_text for key in page_type_map.get(page.page_type, ())):
         score += 2
     if not getattr(asset, "description", ""):
         score -= 1
     return score
+
+
+def _is_news_scene_asset(asset_text: str) -> bool:
+    scene_hints = (
+        "现场", "实拍", "活动", "会议", "开幕", "启幕", "决赛", "大赛", "赛事",
+        "参会", "嘉宾", "评审", "主持人", "大屏", "雄安", "新闻", "发布",
+    )
+    return any(hint in asset_text for hint in scene_hints)
+
+
+def _page_can_use_news_scene(page_text: str, page_type: str) -> bool:
+    if page_type in {"hero", "code_demo", "summary"}:
+        return False
+    if page_type in {"problem", "concept", "feature_cards", "workflow", "metrics"}:
+        return True
+    page_hints = (
+        "发生", "背景", "现场", "活动", "大赛", "赛事", "决赛", "启幕", "开幕",
+        "赛道", "数字", "成果", "技术", "医疗", "健康", "县医院", "落地", "信号",
+    )
+    return any(hint in page_text for hint in page_hints)
+
+
+def _asset_text(asset) -> str:
+    asset_parts = [
+        getattr(asset, "title", ""),
+        getattr(asset, "alt", ""),
+        getattr(asset, "description", ""),
+        " ".join(getattr(asset, "tags", []) or []),
+        " ".join(getattr(asset, "suggested_pages", []) or []),
+        getattr(asset, "source_url", ""),
+    ]
+    return " ".join(str(part) for part in asset_parts if part).lower()
+
+
+def _is_non_content_media_asset(asset_text: str) -> bool:
+    if not asset_text:
+        return True
+    hard_reject_hints = (
+        "头像", "作者头像", "媒体头像", "账号头像", "官方品牌头像", "profile photo", "author avatar",
+    )
+    if any(hint in asset_text for hint in hard_reject_hints):
+        return True
+    non_content_hints = (
+        "logo", "logotype", "标识", "品牌标识",
+        "官方品牌", "水印", "二维码", "qr code", "广告", "赞助", "下载app", "app icon",
+        "publisher", "brand mark", "media logo",
+    )
+    if any(hint in asset_text for hint in non_content_hints):
+        strong_content_hints = (
+            "现场", "赛场", "决赛现场", "产品界面", "截图", "架构", "流程", "示意图",
+            "实验", "结果", "图表", "设备", "技术应用", "demo", "screenshot", "diagram",
+        )
+        return not any(hint in asset_text for hint in strong_content_hints)
+    return False
 
 
 def _is_generic_design_asset(asset_text: str) -> bool:
@@ -307,143 +456,15 @@ def _keywords(text: str) -> list[str]:
     return [w.lower() for w in words if w.lower() not in stop][:40]
 
 
-def _limit_install_pages(pages: list[PageSpec], style: str, bundle: ContentBundle | None = None) -> list[PageSpec]:
-    if style not in {"github_intro", "tech_explainer"}:
-        return pages
-    install_seen = False
-    converted_extra = False
-    kept_pages: list[PageSpec] = []
-    for page in pages:
-        text = " ".join([page.title, page.subtitle, page.narration, " ".join(page.bullets), page.code]).lower()
-        is_install = any(k in text for k in (
-            "uv ", "uvx", "pip ", "npm ", "pnpm ", "docker", "compose", "install",
-            "安装", "部署", "启动", "环境变量", "clone",
-        ))
-        if not is_install:
-            kept_pages.append(page)
-            continue
-        if page.page_type == "code_demo" or is_install:
-            if not install_seen:
-                install_seen = True
-                page.title = page.title[:18] or "快速试用入口"
-                if not page.bullets:
-                    page.bullets = ["最短路径体验", "适合动手验证"]
-                kept_pages.append(page)
-            else:
-                if converted_extra:
-                    continue
-                page.page_type = "concept"
-                page.title = "真正值得看的价值"
-                page.subtitle = "安装只是入口，关键是它能解决什么问题"
-                page.bullets, page.narration = _source_value_fallback(bundle)
-                page.code = ""
-                page.media_asset_id = ""
-                page.media_path = ""
-                setattr(page, "_skip_auto_media", True)
-                converted_extra = True
-                kept_pages.append(page)
-    return kept_pages
-
-
-def _source_value_fallback(bundle: ContentBundle | None) -> tuple[list[str], str]:
-    title = _compact_title(getattr(bundle, "title", "") or "这个项目")
-    text_parts = [
-        getattr(bundle, "title", "") or "",
-        getattr(bundle, "summary", "") or "",
-        " ".join(getattr(bundle, "key_facts", []) or []),
-    ]
-    for item in getattr(bundle, "raw_materials", []) or []:
-        text_parts.append(getattr(item, "title", "") or "")
-        text_parts.append((getattr(item, "content", "") or "")[:3000])
-    text = " ".join(text_parts).lower()
-    candidates = [
-        (("数据", "分析", "excel", "sql", "报表", "报告", "chart", "dashboard"), "数据分析自动化"),
-        (("自然语言", "问答", "chat", "query", "nl2sql", "问数"), "自然语言交互"),
-        (("知识库", "文档", "检索", "rag", "搜索", "引用"), "文档知识可检索"),
-        (("工作流", "workflow", "编排", "pipeline", "流程"), "流程可以编排"),
-        (("agent", "智能体", "多智能体", "multi-agent", "tool", "工具调用"), "智能体调用工具"),
-        (("私有化", "本地", "部署", "企业", "权限", "安全"), "适合私有部署"),
-        (("开源", "二开", "扩展", "插件", "api", "sdk"), "方便二次开发"),
-        (("生成", "自动", "自动化", "一键", "批量"), "减少重复操作"),
-    ]
-    bullets: list[str] = []
-    for keywords, label in candidates:
-        if any(keyword in text for keyword in keywords) and label not in bullets:
-            bullets.append(label)
-        if len(bullets) >= 3:
-            break
-    if len(bullets) < 3:
-        for label in ("先看核心能力", "再看适用场景", "最后动手验证"):
-            if label not in bullets:
-                bullets.append(label)
-            if len(bullets) >= 3:
-                break
-    joined = "、".join(bullets[:3])
-    narration = (
-        f"安装步骤只是入口，真正值得关注的是「{title}」能不能把{joined}落到真实工作流里。"
-        "先判断它解决的问题和适用场景，再决定是否部署试用，会比只看命令行更有价值。"
-    )
-    return bullets[:3], narration
-
-
-def _ensure_page_density(
+def _has_enough_page_content(
     page_type: str,
-    title: str,
     subtitle: str,
     narration: str,
     bullets: list[str],
     code: str = "",
-) -> list[str]:
-    """避免页面只有一行内容；渲染前用旁白/副标题补足展示要点。"""
+) -> bool:
     if page_type == "hero":
-        return bullets[:4]
-    if len(bullets) >= 2:
-        return bullets[:4]
-
-    candidates = []
-    candidates.extend(bullets)
-    for text in (subtitle, narration):
-        for part in re.split(r"[。！？；;，,\n]+", text or ""):
-            part = part.strip()
-            if 4 <= len(part) <= 28 and part not in candidates:
-                candidates.append(part)
-    if page_type == "code_demo" and code:
-        code_hint = code.strip().splitlines()[0][:28]
-        fallbacks = [
-            "一键启动关键服务",
-            "适合快速部署验证",
-            "后续可接入配置管理",
-        ]
-        if code_hint and code_hint not in candidates:
-            candidates.insert(0, code_hint)
-        for item in fallbacks:
-            if len(candidates) >= 3:
-                break
-            if item not in candidates:
-                candidates.append(item)
-    generic = [
-        title[:18] or "核心观点",
-        "先抓住关键动作",
-        "再理解适用场景",
-        "最后落到实践路径",
-    ]
-    for item in generic:
-        if len(candidates) >= 3:
-            break
-        if item and item not in candidates:
-            candidates.append(item)
-    return candidates[:4]
-
-
-def _fallback_pages(bundle: ContentBundle) -> list[dict]:
-    text = bundle.summary or (bundle.raw_materials[0].content if bundle.raw_materials else "")
-    sentences = [s.strip() for s in re.split(r"[。！？.!?\n]+", text) if len(s.strip()) > 6]
-    bullets = sentences[:4] or [bundle.title]
-    pages = [
-        {"page_type": "hero", "title": bundle.title, "subtitle": "一页页看懂核心内容", "narration": bundle.summary[:90]},
-        {"page_type": "feature_cards", "title": "核心信息", "bullets": bullets[:4], "narration": "这份资料的重点，可以先抓住这几个关键词。"},
-        {"page_type": "summary", "title": "一句话总结", "bullets": bullets[:3], "narration": (sentences[0] if sentences else bundle.title)},
-    ]
-    if bundle.code_examples:
-        pages.insert(2, {"page_type": "code_demo", "title": "最小示例", "code": bundle.code_examples[0], "narration": "如果看代码，最关键的是理解它如何被调用。"})
-    return pages
+        return bool(narration or subtitle or bullets)
+    if page_type == "code_demo":
+        return bool(code and (narration or len(bullets) >= 1))
+    return bool(narration and len(bullets) >= 1)

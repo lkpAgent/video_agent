@@ -22,7 +22,7 @@ from .schemas import PageScript
 
 console = Console()
 
-DOC_AGENT_TTS_SPEED = float(os.getenv("DOC_AGENT_TTS_SPEED", "1.5"))
+DOC_AGENT_TTS_SPEED = float(os.getenv("DOC_AGENT_TTS_SPEED", "1.2"))
 
 
 def generate_page_audio(script: PageScript, work_dir: str, voice_id: str = "", voice_type: int = 1) -> PageScript:
@@ -58,14 +58,14 @@ def render_document_video(
         if not _check_hyperframes_available():
             if not getattr(config, "RECORD_FALLBACK_TO_SELENIUM", True):
                 raise RuntimeError("HyperFrames 不可用，请检查 Node/npm/npx/HyperFrames CLI 环境")
-            console.print("[yellow]⚠️ HyperFrames 不可用，文档视频回退 Firefox + Selenium[/yellow]")
+            console.print("[yellow]⚠️ HyperFrames 不可用，项目视频回退 Firefox + Selenium[/yellow]")
         else:
             try:
                 return _render_with_hyperframes(html_path, script, work_dir, output_filename)
             except Exception as exc:
                 if not getattr(config, "RECORD_FALLBACK_TO_SELENIUM", True):
                     raise
-                console.print(f"[yellow]⚠️ HyperFrames 文档视频渲染失败，回退 Firefox + Selenium: {exc}[/yellow]")
+                console.print(f"[yellow]⚠️ HyperFrames 项目视频渲染失败，回退 Firefox + Selenium: {exc}[/yellow]")
     scenes = _pages_as_scenes(script)
     return record_gallery_video(html_path, scenes, "", output_filename or "doc-agent.mp4")
 
@@ -100,7 +100,7 @@ def _render_with_hyperframes(html_path: str, script: PageScript, work_dir: str, 
         actual = _resolve_rendered_video_path(str(output_path), "", started_at)
         if actual:
             return actual
-        raise RuntimeError(f"HyperFrames 文档视频渲染超时: {' '.join(cmd)}")
+        raise RuntimeError(f"HyperFrames 项目视频渲染超时: {' '.join(cmd)}")
     actual = _resolve_rendered_video_path(
         str(output_path),
         (result.stdout or "") + "\n" + (result.stderr or ""),
@@ -117,7 +117,7 @@ def _render_with_hyperframes(html_path: str, script: PageScript, work_dir: str, 
     for line in failure_lines:
         console.print(f"[dim]   {line}[/dim]")
     raise RuntimeError(
-        "HyperFrames 文档视频渲染失败\n"
+        "HyperFrames 项目视频渲染失败\n"
         f"命令: {' '.join(cmd)}\n"
         f"输出: {' | '.join(failure_lines[-20:])}"
     )

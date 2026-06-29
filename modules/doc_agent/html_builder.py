@@ -15,7 +15,7 @@ def build_document_html(script: PageScript, work_dir: str) -> str:
     work.mkdir(parents=True, exist_ok=True)
     font_face_css, font_family = _font_css(work)
     total_duration = sum(page.duration for page in script.pages)
-    visual_style = _normalize_visual_style(getattr(script, "visual_style", "bright_unified"))
+    visual_style = _normalize_visual_style(getattr(script, "visual_style", "dark_premium"))
     pages_html = []
     timeline_parts = []
     audio_tags = []
@@ -27,7 +27,7 @@ def build_document_html(script: PageScript, work_dir: str) -> str:
         if getattr(page, "_media_src", ""):
             media_count += 1
             media_order = media_count
-        pages_html.append(_render_page(page, idx, len(script.pages), acc))
+        pages_html.append(_render_page(page, idx, len(script.pages), acc, script.title))
         timeline_parts.append(_timeline_js(page, idx, acc, media_order))
         audio_path = page_to_audio_path(page)
         if audio_path:
@@ -66,14 +66,17 @@ body{{
   position:absolute;inset:0;padding:78px 72px 78px;overflow:hidden;
   display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:30px;
 }}
-.topline{{display:flex;align-items:center;justify-content:space-between;gap:24px;z-index:3}}
+.topline{{display:grid;grid-template-columns:190px minmax(0,1fr) 120px;align-items:start;gap:18px;z-index:3}}
 .eyebrow{{font-size:18px;letter-spacing:6px;color:#64748b;font-weight:800;text-transform:uppercase}}
-.counter{{font-size:24px;color:#64748b;letter-spacing:1px}}.counter b{{font-size:30px;color:#0f172a;font-weight:950}}
+.top-video-title{{justify-self:center;max-width:640px;text-align:center;font-size:22px;line-height:1.28;font-weight:900;color:#1e293b;letter-spacing:0;overflow-wrap:anywhere;word-break:break-word;text-wrap:balance}}
+.counter{{justify-self:end;font-size:24px;color:#64748b;letter-spacing:1px}}.counter b{{font-size:30px;color:#0f172a;font-weight:950}}
 .title{{font-size:66px;line-height:1.1;font-weight:950;letter-spacing:0;max-width:940px;text-wrap:balance;overflow-wrap:anywhere;word-break:break-word;line-break:loose;color:#0f172a}}
 .title-long{{font-size:54px;line-height:1.14;max-width:950px}}
 .title-compact{{font-size:46px;line-height:1.18;max-width:952px}}
 .title-mini{{font-size:40px;line-height:1.2;max-width:952px}}
 .title-xl{{font-size:76px;line-height:1.06;max-width:940px}}
+.video-title{{font-size:58px;line-height:1.12;font-weight:950;letter-spacing:0;max-width:960px;text-wrap:balance;overflow-wrap:anywhere;word-break:break-word;color:#0f172a}}
+.hero-hook{{font-size:31px;line-height:1.36;color:#64748b;font-weight:760;max-width:920px;margin-top:18px;text-wrap:balance}}
 .subtitle{{display:inline-flex;align-items:center;gap:18px;font-size:31px;line-height:1.38;color:#64748b;max-width:920px;margin-top:18px;font-weight:600}}
 .accent{{display:inline-flex;margin-top:16px;padding:6px 14px;border-radius:8px;background:#0f172a;color:#fff;font-size:25px;font-weight:900;box-shadow:none}}
 .content{{position:relative;z-index:3;display:flex;flex-direction:column;justify-content:center;gap:32px;padding-top:0;padding-bottom:10px}}
@@ -104,8 +107,9 @@ code{{font-family:Consolas,"Cascadia Code",monospace;font-size:25px;line-height:
 .layout-hero .title-compact{{font-size:46px;line-height:1.18}}
 .layout-hero .title-mini{{font-size:39px;line-height:1.2}}
 .layout-hero .title-xl{{font-size:80px;line-height:1.04}}
+.layout-hero .video-title{{font-size:64px;line-height:1.1}}
 .layout-hero .footer{{display:flex}}
-.layout-hero .caption{{font-size:27px;line-height:1.43;padding:28px 38px 24px;max-height:240px}}
+.layout-hero .caption{{font-size:27px;line-height:1.43;padding:28px 38px 24px;max-height:320px}}
 .layout-bento .cards{{grid-template-columns:1fr 1fr;gap:28px;max-width:930px}}
 .layout-bento .card{{grid-template-columns:1fr;align-items:start;gap:18px;min-height:210px;padding:36px;border-radius:34px}}
 .layout-bento .card::before{{content:attr(data-index);width:54px;height:54px}}
@@ -140,7 +144,7 @@ code{{font-family:Consolas,"Cascadia Code",monospace;font-size:25px;line-height:
 .layout-summary .card::before{{background:rgba(255,255,255,.14);color:#93c5fd}}
 .layout-summary .card b{{color:#fff;font-size:34px}}
 .footer{{z-index:3;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;margin-top:auto;min-height:0;padding-bottom:42px}}
-.caption{{padding:28px 40px 24px;background:rgba(255,255,255,.76);border:1px solid rgba(15,23,42,.08);border-radius:28px;box-shadow:0 18px 46px rgba(15,23,42,.08),inset 0 2px 4px rgba(255,255,255,.75);font-size:28px;line-height:1.43;font-weight:760;color:#263447;max-height:250px;overflow:visible;text-align:left}}
+.caption{{padding:28px 40px 24px;background:rgba(255,255,255,.76);border:1px solid rgba(15,23,42,.08);border-radius:28px;box-shadow:0 18px 46px rgba(15,23,42,.08),inset 0 2px 4px rgba(255,255,255,.75);font-size:28px;line-height:1.43;font-weight:760;color:#263447;max-height:360px;overflow:visible;text-align:left}}
 .caption-long{{font-size:25px;line-height:1.4}}
 .caption-xl{{font-size:22px;line-height:1.36}}
 .progress{{width:92px;height:7px;background:rgba(15,23,42,.28);border-radius:999px;overflow:hidden;margin:18px auto 0}}.progress span{{display:block;height:100%;background:rgba(15,23,42,.32);width:100%}}
@@ -157,8 +161,11 @@ code{{font-family:Consolas,"Cascadia Code",monospace;font-size:25px;line-height:
   border-color:rgba(255,255,255,.05);
 }}
 .theme-dark-premium .eyebrow{{color:#38bdf8;opacity:.92}}
+.theme-dark-premium .top-video-title{{color:#cbd5e1}}
 .theme-dark-premium .counter{{color:#94a3b8}}.theme-dark-premium .counter b{{color:#38bdf8}}
 .theme-dark-premium .title{{color:#f8fafc}}
+.theme-dark-premium .video-title{{color:#f8fafc}}
+.theme-dark-premium .hero-hook{{color:#94a3b8}}
 .theme-dark-premium .subtitle{{color:#94a3b8}}
 .theme-dark-premium .accent{{background:rgba(56,189,248,.15);color:#38bdf8;border:1px solid rgba(56,189,248,.3)}}
 .theme-dark-premium .card,.theme-dark-premium .step,.theme-dark-premium .split-panel,.theme-dark-premium .hero-panel,.theme-dark-premium .code-note{{
@@ -209,8 +216,14 @@ gsap.set(".page", {{autoAlpha:0}});
 {''.join(timeline_parts)}
 window.__timelines["doc-agent"] = tl;
 window.__READY = false;
+window.__DETERMINISTIC_RENDER = false;
 window.__stopTimeline = () => {{ tl.pause(0); window.__READY = false; }};
-window.__renderAt = (seconds) => {{ tl.pause(seconds); return seconds; }};
+window.__renderAt = (seconds) => {{
+  window.__DETERMINISTIC_RENDER = true;
+  window.__READY = false;
+  tl.pause(seconds);
+  return seconds;
+}};
 window.__renderScene = (idx) => {{
   const pages = Array.from(document.querySelectorAll(".page"));
   gsap.set(pages, {{autoAlpha:0}});
@@ -219,13 +232,17 @@ window.__renderScene = (idx) => {{
 }};
 window.addEventListener("DOMContentLoaded", () => {{
   const timer = setInterval(() => {{
+    if (window.__DETERMINISTIC_RENDER) {{
+      clearInterval(timer);
+      return;
+    }}
     if (window.__READY) {{
       clearInterval(timer);
       tl.play(0);
     }}
   }}, 100);
   setTimeout(() => {{
-    if (!window.__READY) {{
+    if (!window.__READY && !window.__DETERMINISTIC_RENDER) {{
       window.__READY = true;
       tl.play(0);
     }}
@@ -260,7 +277,7 @@ def _prepare_page_media(page: PageSpec, work_dir: Path) -> None:
 
 
 def _normalize_visual_style(value: str) -> str:
-    value = (value or "bright_unified").strip().lower().replace("_", "-")
+    value = (value or "dark_premium").strip().lower().replace("_", "-")
     if value in {"dark", "dark-premium", "premium-dark"}:
         return "dark-premium"
     return "bright-unified"
@@ -282,7 +299,7 @@ def _font_css(work_dir: Path) -> tuple[str, str]:
     return f'@font-face{{font-family:"DocAgent CJK";src:url("./{target.name}");font-display:block;}}', '"DocAgent CJK",sans-serif'
 
 
-def _render_page(page: PageSpec, idx: int, total: int, start: float) -> str:
+def _render_page(page: PageSpec, idx: int, total: int, start: float, script_title: str = "") -> str:
     layout = _choose_layout(page, idx, total)
     title = _e(page.title)
     title_class = _title_class(page.title)
@@ -300,12 +317,20 @@ def _render_page(page: PageSpec, idx: int, total: int, start: float) -> str:
         meta_html = '<div class="subtitle">' + "".join(meta_parts) + "</div>"
     caption = _e(page.narration)
     caption_class = _caption_class(page.narration)
+    top_title = _e(script_title)
+    header_html = f'<h1 class="title {title_class}">{title}</h1>'
+    if idx == 1 and (script_title or "").strip():
+        main_title = _e(script_title)
+        hook_html = ""
+        if (script_title or "").strip() != (page.title or "").strip():
+            hook_html = f'<div class="hero-hook">{title}</div>'
+        header_html = f'<h1 class="video-title">{main_title}</h1>{hook_html}'
     return f"""
   <section id="page-{idx}" class="page page-{_e(page.page_type)} layout-{layout}" data-start="{start:.2f}" data-duration="{page.duration:.2f}">
-    <div class="topline"><div class="eyebrow">{_e(page.page_type.replace("_", " "))}</div><div class="counter"><b>{idx:02d}</b> / {total:02d}</div></div>
+    <div class="topline"><div class="eyebrow">{_e(page.page_type.replace("_", " "))}</div><div class="top-video-title">{top_title}</div><div class="counter"><b>{idx:02d}</b> / {total:02d}</div></div>
     <div class="content">
       <div>
-        <h1 class="title {title_class}">{title}</h1>
+        {header_html}
         {meta_html}
       </div>
       {body}
@@ -410,25 +435,14 @@ def _timeline_js(page: PageSpec, idx: int, start: float, media_order: int = 0) -
     duration = max(1.0, page.duration - 0.2)
     media_js = ""
     if getattr(page, "_media_src", ""):
-        move_duration = max(1.4, page.duration - 1.0)
-        motion = _media_motion(idx)
-        if motion == "wipe":
-            image_from = "{clipPath:'inset(0 100% 0 0)',x:-120,scale:.94,filter:'blur(6px)'}"
-            image_to = "{clipPath:'inset(0 0% 0 0)',x:0,scale:1,filter:'blur(0px)',duration:1.02,ease:'expo.out'}"
-        elif motion == "tilt":
-            image_from = "{clipPath:'inset(10% 10% 10% 10%)',rotationY:-52,rotationZ:-5,scale:.82,x:-80,filter:'blur(3px)'}"
-            image_to = "{clipPath:'inset(0% 0% 0% 0%)',rotationY:0,rotationZ:-1,scale:1,x:0,filter:'blur(0px)',duration:.92,ease:'back.out(1.22)'}"
-        elif motion == "stack":
-            image_from = "{clipPath:'polygon(0 0,100% 12%,88% 100%,8% 88%)',rotation:8,scale:.72,y:100,filter:'blur(4px)'}"
-            image_to = "{clipPath:'polygon(0 0,100% 0,100% 100%,0 100%)',rotation:-1,scale:1,y:0,filter:'blur(0px)',duration:.86,ease:'back.out(1.32)'}"
-        else:
-            image_from = "{clipPath:'circle(0% at 50% 50%)',scale:1.34,filter:'blur(12px)'}"
-            image_to = "{clipPath:'circle(76% at 50% 50%)',scale:1,filter:'blur(0px)',duration:.9,ease:'expo.out'}"
+        move_duration = max(0.8, min(page.duration - 2.1, duration - 1.7))
+        image_from = "{opacity:0,y:64,scale:.96}"
+        image_to = "{opacity:1,y:0,scale:1,duration:.72,ease:'power2.out'}"
         if media_order == 1:
             main_motion_js = f"""
 tl.set("{selector} .media-main", {{transformOrigin:"50% 50%"}}, {start + .70:.2f});
-tl.fromTo("{selector} .media-main", {{scale:1.01,x:0,y:0}}, {{scale:1.62,x:"18%",y:0,duration:.62,ease:"power2.inOut"}}, {start + .92:.2f});
-tl.to("{selector} .media-main", {{scale:1.62,x:"-18%",y:0,duration:1.18,ease:"power1.inOut"}}, {start + 1.54:.2f});
+tl.fromTo("{selector} .media-main", {{scale:1.0,x:0,y:0}}, {{scale:1.10,x:"4%",y:0,duration:.62,ease:"power2.inOut"}}, {start + .92:.2f});
+tl.to("{selector} .media-main", {{scale:1.10,x:"-4%",y:0,duration:1.18,ease:"power1.inOut"}}, {start + 1.54:.2f});
 tl.to("{selector} .media-main", {{scale:1,x:0,y:0,duration:.62,ease:"power2.out"}}, {start + 2.74:.2f});
 """
         elif media_order == 2:
@@ -443,16 +457,18 @@ tl.fromTo("{selector} .media-main", {{scale:.98,x:-18,y:18,rotationZ:.8}}, {{sca
 """
         media_js = f"""
 tl.fromTo("{selector} .media-frame", {image_from}, {image_to}, {start + .58:.2f});
-tl.fromTo("{selector} .media-backdrop-img", {{scale:1.06,x:0,y:0}}, {{scale:1.20,x:-22,y:16,duration:{move_duration:.2f},ease:"none"}}, {start + .62:.2f});
+tl.fromTo("{selector} .media-backdrop-img", {{scale:1.04,x:0,y:0}}, {{scale:1.10,x:-10,y:8,duration:{move_duration:.2f},ease:"none"}}, {start + .62:.2f});
 tl.fromTo("{selector} .media-glare", {{opacity:0,x:"-70%"}}, {{opacity:.48,x:"105%",duration:.88,ease:"power2.out"}}, {start + 1.04:.2f});
 {main_motion_js}
 tl.fromTo("{selector} .media-point", {{opacity:0,y:28,scale:.96}}, {{opacity:1,y:0,scale:1,duration:.45,stagger:.09,ease:"back.out(1.18)"}}, {start + 1.42:.2f});
 """
     return f"""
+tl.set(".page", {{autoAlpha:0}}, {start:.2f});
+tl.set("{selector}", {{autoAlpha:1}}, {start:.2f});
 tl.fromTo("{selector}", {{autoAlpha:0}}, {{autoAlpha:1,duration:.25}}, {start:.2f});
-tl.fromTo("{selector} .eyebrow", {{opacity:0,y:-18}}, {{opacity:1,y:0,duration:.42,ease:"power3.out"}}, {start + .08:.2f});
-tl.fromTo("{selector} .title", {{opacity:0,y:58,filter:"blur(8px)"}}, {{opacity:1,y:0,filter:"blur(0px)",duration:.72,ease:"expo.out"}}, {start + .12:.2f});
-tl.fromTo("{selector} .subtitle,{selector} .accent", {{opacity:0,y:24}}, {{opacity:1,y:0,duration:.55,stagger:.08,ease:"power3.out"}}, {start + .45:.2f});
+tl.fromTo("{selector} .eyebrow,{selector} .top-video-title,{selector} .counter", {{opacity:0,y:-18}}, {{opacity:1,y:0,duration:.42,ease:"power3.out"}}, {start + .08:.2f});
+tl.fromTo("{selector} .title,{selector} .video-title", {{opacity:0,y:58,filter:"blur(8px)"}}, {{opacity:1,y:0,filter:"blur(0px)",duration:.72,ease:"expo.out"}}, {start + .12:.2f});
+tl.fromTo("{selector} .hero-hook,{selector} .subtitle,{selector} .accent", {{opacity:0,y:24}}, {{opacity:1,y:0,duration:.55,stagger:.08,ease:"power3.out"}}, {start + .45:.2f});
 tl.fromTo("{selector} .card,{selector} .step,{selector} .split-panel,{selector} pre,{selector} .hero-panel,{selector} .code-note", {{opacity:0,y:38,scale:.97}}, {{opacity:1,y:0,scale:1,duration:.55,stagger:.12,ease:"power3.out"}}, {start + .7:.2f});
 {media_js}
 tl.to("{selector}", {{autoAlpha:0,duration:.22}}, {start + duration:.2f});

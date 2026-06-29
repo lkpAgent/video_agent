@@ -636,6 +636,10 @@ def _record_narration_playwright(html_path: str, output_filename: str = None) ->
             args=[
                 f"--window-size={config.VIDEO_WIDTH},{config.VIDEO_HEIGHT}",
                 "--autoplay-policy=no-user-gesture-required",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
             ]
         )
         context = browser.new_context(

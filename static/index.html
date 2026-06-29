@@ -9,7 +9,7 @@
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#080812;--panel:#10101e;--panel-2:#151527;--surface:#1a1a2c;--border:rgba(167,170,255,.16);--text:#f4f4fb;--muted:#aaaac2;--subtle:#7f819c;--primary:#7c6cff;--primary-2:#b44cff}
 body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:radial-gradient(circle at 50% -20%,#17152c 0,var(--bg) 42%);color:var(--text);height:100vh;overflow:hidden}
-#root{display:flex;height:100vh}
+#root{display:flex;height:100vh;min-width:0}
 .sidebar{width:280px;background:linear-gradient(180deg,#111122,#0d0d19);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;box-shadow:12px 0 32px rgba(0,0,0,.18)}
 .sidebar .logo{padding:19px 20px;font-size:17px;font-weight:800;letter-spacing:.4px;background:linear-gradient(135deg,#8b7cff,#c35cff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;border-bottom:1px solid rgba(255,255,255,.05)}
 .sidebar h2{padding:18px 20px 8px;font-size:11px;font-weight:700;letter-spacing:1.6px;color:#9698b5;text-transform:uppercase}
@@ -29,7 +29,7 @@ body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:radial-gr
 .tag-s{background:rgba(168,85,247,0.2);color:#c4b5fd}
 .tag-g{background:rgba(34,197,94,0.2);color:#86efac}
 .tag-d{background:rgba(14,165,233,0.2);color:#7dd3fc}
-.main{flex:1 1 0;display:flex;flex-direction:column;overflow-y:auto;padding:30px 40px;background:linear-gradient(180deg,rgba(12,12,24,.7),rgba(8,8,18,.88))}
+.main{flex:0 0 clamp(460px,34vw,620px);min-width:460px;max-width:620px;display:flex;flex-direction:column;overflow-y:auto;padding:30px 40px;background:linear-gradient(180deg,rgba(12,12,24,.7),rgba(8,8,18,.88))}
 .main h1{font-size:21px;font-weight:800;margin-bottom:18px;letter-spacing:.3px}
 .fg{margin-bottom:14px}
 .fg label{display:block;font-size:12px;font-weight:600;color:#c7c8dc;margin-bottom:7px}
@@ -39,10 +39,14 @@ body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:radial-gr
 .fg input:focus,.fg textarea:focus,.fg select:focus{border-color:#8376ff;box-shadow:0 0 0 3px rgba(124,108,255,.14)}
 .fg select option{background:#1a1a2e;color:#fff}
 .fg textarea{resize:vertical;min-height:80px}
+.fg.error label{color:#fca5a5}
+.fg.error input,.fg.error textarea,.fg.error select{border-color:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.12)}
+.field-error{margin-top:7px;color:#f87171;font-size:12px;font-weight:700;line-height:1.35}
 .fr{display:flex;gap:10px}.fr .fg{flex:1}
 .chip{padding:7px 14px;border-radius:20px;font-size:12px;cursor:pointer;border:1px solid rgba(183,185,220,.25);display:inline-flex;align-items:center;gap:6px;color:#c8c9db;margin:2px;background:rgba(255,255,255,.025);transition:.18s ease}
 .chip:hover{border-color:rgba(255,255,255,0.3);color:#fff}
 .chip.on{background:rgba(124,108,255,.2);border-color:#8376ff;color:#e1ddff;font-weight:700;box-shadow:0 0 0 2px rgba(124,108,255,.08)}
+.chip.error{border-color:rgba(239,68,68,.62);color:#fecaca;background:rgba(239,68,68,.08)}
 .chip .dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,0.2)}
 .chip.on .dot{background:#6366f1}
 .bg-grid{display:flex;gap:8px;flex-wrap:wrap}
@@ -57,10 +61,10 @@ body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:radial-gr
 .status{padding:10px 14px;background:rgba(255,255,255,0.02);border-radius:7px;font-size:12px;margin-top:10px}
 .spin{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,0.2);border-top-color:#6366f1;border-radius:50%;animation:spin 0.8s linear infinite;margin-right:6px;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
-.preview{flex:1 1 0;background:linear-gradient(180deg,#10101e,#0d0d19);border-left:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0}
+.preview{flex:1 1 auto;min-width:0;background:linear-gradient(180deg,#10101e,#0d0d19);border-left:1px solid var(--border);display:flex;flex-direction:column}
 .preview h2{padding:18px;font-size:13px;font-weight:700;color:#aeb0c8;border-bottom:1px solid rgba(255,255,255,.05)}
-.player{flex:1;display:flex;align-items:center;justify-content:center;padding:16px}
-.player video{width:100%;border-radius:6px;max-height:65vh}
+.player{flex:1;min-width:0;min-height:0;display:flex;align-items:center;justify-content:center;padding:16px}
+.player video{width:100%;max-width:100%;height:auto;border-radius:6px;max-height:65vh;object-fit:contain}
 .share-row{display:flex;gap:8px;padding:0 18px 12px;align-items:center}
 .share-row input{flex:1;min-width:0;padding:8px 10px;background:#10101e;border:1px solid rgba(180,183,220,.2);border-radius:7px;color:#cfd2ff;font-size:11px;outline:none}
 .share-row .btn-s{margin:0;white-space:nowrap}
@@ -71,9 +75,9 @@ body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:radial-gr
 .imgs h3{font-size:10px;color:#9597b0;font-weight:700;margin-bottom:5px}
 .imgs div{display:flex;flex-wrap:wrap;gap:4px}
 .imgs img{width:56px;height:32px;object-fit:cover;border-radius:3px;border:1px solid rgba(255,255,255,0.08)}
-.video-details{padding:12px 18px;border-top:1px solid rgba(255,255,255,0.05);font-size:11px;color:rgba(255,255,255,0.55);max-height:220px;overflow-y:auto}
+.video-details{padding:12px 18px;border-top:1px solid rgba(255,255,255,0.05);font-size:11px;color:rgba(255,255,255,0.55);max-height:220px;overflow-y:auto;overflow-wrap:anywhere}
 .video-details strong{color:#a5b4fc}.video-details .copy{margin-top:8px;white-space:pre-wrap;line-height:1.65;color:rgba(255,255,255,0.7)}
-.script-review{padding:14px 18px;border-top:1px solid rgba(255,255,255,.08);background:rgba(124,108,255,.055);max-height:52vh;overflow-y:auto}
+.script-review{padding:14px 18px;border-top:1px solid rgba(255,255,255,.08);background:rgba(124,108,255,.055);overflow:visible}
 .script-review-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
 .script-review-title{font-size:13px;font-weight:800;color:#fff}
 .script-review-count{font-size:11px;color:#c4b5fd;background:rgba(124,108,255,.18);border:1px solid rgba(124,108,255,.35);border-radius:999px;padding:4px 9px;white-space:nowrap}
@@ -135,7 +139,7 @@ const MODES=[
   {key:"narration",name:"口播视频",icon:"🎤"},
   {key:"science",name:"科普视频",icon:"🔬"},
   {key:"gallery",name:"图文展示",icon:"🖼️"},
-  {key:"doc-agent",name:"文档视频",icon:"📚"},
+  {key:"doc-agent",name:"项目视频",icon:"📚"},
 ];
 
 const api={profiles:()=>fetch(`${API_BASE}/video-api/profiles`).then(r=>r.json()),
@@ -244,13 +248,14 @@ function SettingsModal({profiles,voices,onClose,onRefresh}){
   );
 }
 
-function ScriptReviewPanel({review,onConfirm,onRevise,onFeedbackChange}){
+function ScriptReviewPanel({review,onConfirm,onRevise,onCancel,onFeedbackChange}){
   if(!review||!review.script)return null;
   const pages=review.script.pages||[];
+  const locked=!!review.confirmed||!!review.revising;
   return React.createElement("div",{className:"script-review"},
     React.createElement("div",{className:"script-review-head"},
-      React.createElement("div",{className:"script-review-title"},"文案确认 · "+(review.script.title||"文档视频")),
-      React.createElement("div",{className:"script-review-count"},(review.feedback||"").trim()?"已输入修改意见，等待提交":review.countdown+" 秒后自动生成")
+      React.createElement("div",{className:"script-review-title"},"文案确认 · "+(review.script.title||"项目视频")),
+      React.createElement("div",{className:"script-review-count"},review.confirmed?"已确认，正在生成视频":review.revising?"正在按意见重写":(review.feedback||"").trim()?"已输入修改意见，等待提交":review.countdown+" 秒后自动生成")
     ),
     ...pages.map((p,i)=>React.createElement("div",{className:"script-page",key:p.page_id||i},
       React.createElement("h4",null,(i+1)+". "+(p.title||"未命名页面")),
@@ -258,10 +263,11 @@ function ScriptReviewPanel({review,onConfirm,onRevise,onFeedbackChange}){
       p.bullets&&p.bullets.length?React.createElement("div",{className:"bullets"},p.bullets.join(" / ")):null,
       React.createElement("div",{className:"narration"},p.narration||"")
     )),
-    React.createElement("textarea",{value:review.feedback||"",onChange:e=>onFeedbackChange(e.target.value),placeholder:"如果要修改，在这里写清楚：比如第 2 页加强痛点、第 4 页不要讲安装、整体更像抖音开场..."}),
+    React.createElement("textarea",{value:review.feedback||"",onChange:e=>onFeedbackChange(e.target.value),disabled:locked,placeholder:"如果要修改，在这里写清楚：比如第 2 页加强痛点、第 4 页不要讲安装、整体更像抖音开场..."}),
     React.createElement("div",{className:"script-review-actions"},
-      React.createElement("button",{className:"btn",onClick:onConfirm},"确认并生成视频"),
-      React.createElement("button",{className:"btn btn-secondary",onClick:onRevise,disabled:!(review.feedback||"").trim()},"按意见重写文案")
+      React.createElement("button",{className:"btn",onClick:onConfirm,disabled:locked},"确认并生成视频"),
+      React.createElement("button",{className:"btn btn-secondary",onClick:onRevise,disabled:locked||!(review.feedback||"").trim()},"按意见重写文案"),
+      React.createElement("button",{className:"btn btn-secondary",onClick:onCancel,disabled:locked},"取消")
     )
   );
 }
@@ -277,6 +283,7 @@ function App(){
   const [shareMsg,setShareMsg]=useState("");
   const [optimizedContent,setOptimizedContent]=useState("");
   const [review,setReview]=useState(null);
+  const reviewNeedsAction=review&&!review.confirmed&&!review.revising;
 
   const refresh=async()=>{
     try{setProfiles((await api.profiles()).profiles||[])}catch(e){}
@@ -306,9 +313,9 @@ function App(){
         clearInterval(id);setGenerating(false);
         setReview({taskId,script:st.script,title:st.title,feedback:"",countdown:30});
       }else if(st.status==="done"){
-        clearInterval(id);setGenerating(false);setReview(null);setVideo(st.video);setStatus("✅完成");refresh();
+        clearInterval(id);setGenerating(false);setVideo(st.video);setStatus("✅完成");refresh();
       }else if(st.status==="error"){
-        clearInterval(id);setGenerating(false);setReview(null);setStatus("❌"+(st.error||st.detail||""));
+        clearInterval(id);setGenerating(false);setStatus("❌"+(st.error||st.detail||""));
       }
     },1500);
   };
@@ -324,7 +331,7 @@ function App(){
   const continueReview=async()=>{
     if(!review)return;
     const taskId=review.taskId;
-    setReview(null);setGenerating(true);setStatus("已确认文案，开始生成视频...");
+    setReview(r=>r?{...r,confirmed:true,countdown:0}:r);setGenerating(true);setStatus("已确认文案，开始生成视频...");
     try{await api.docContinue(taskId);pollInteractiveTask(taskId,"doc-agent");}
     catch(e){setGenerating(false);setStatus("❌"+e.message)}
   };
@@ -333,13 +340,20 @@ function App(){
     if(!review||!(review.feedback||"").trim())return;
     const taskId=review.taskId;
     const feedback=review.feedback.trim();
-    setReview(null);setGenerating(true);setStatus("正在按意见重写文案...");
+    setReview(r=>r?{...r,revising:true}:r);setGenerating(true);setStatus("正在按意见重写文案...");
     try{await api.docRevise(taskId,feedback);pollInteractiveTask(taskId,"doc-agent");}
     catch(e){setGenerating(false);setStatus("❌"+e.message)}
   };
 
+  const cancelReview=()=>{
+    setReview(null);
+    setGenerating(false);
+    setStatus("已取消文案确认");
+  };
+
   useEffect(()=>{
     if(!review)return;
+    if(review.confirmed||review.revising)return;
     if((review.feedback||"").trim())return;
     if(review.countdown<=0){continueReview();return;}
     const timer=setTimeout(()=>setReview(r=>r?{...r,countdown:r.countdown-1}:r),1000);
@@ -355,7 +369,7 @@ function App(){
   const shareUrl=()=>{
     if(selectedVideo&&selectedVideo.share_url)return selectedVideo.share_url;
     if(!video)return "";
-    return new URL(`${API_BASE}/watch/${encodeURIComponent(video)}`, window.location.href).href;
+    return new URL(`${API_BASE}/video-api/watch/${encodeURIComponent(video)}`, window.location.href).href;
   };
   const openShare=()=>{
     const url=shareUrl();
@@ -384,7 +398,7 @@ function App(){
       React.createElement("h2",null,"📼 视频列表"),
       React.createElement("div",{className:"video-list"},
         ...videos.map(v=>React.createElement("div",{key:v.name,className:"video-card"+(video===v.name?" selected":""),onClick:()=>play(v)},
-          React.createElement("div",{className:"v-title"},React.createElement("span",{className:"tag "+(v.type==="narration"?"tag-n":v.type==="gallery"?"tag-g":v.type==="doc-agent"?"tag-d":"tag-s")},v.type==="narration"?"口播":v.type==="gallery"?"图文":v.type==="doc-agent"?"文档":"科普"),v.title||v.name.replace(".mp4","")),
+          React.createElement("div",{className:"v-title"},React.createElement("span",{className:"tag "+(v.type==="narration"?"tag-n":v.type==="gallery"?"tag-g":v.type==="doc-agent"?"tag-d":"tag-s")},v.type==="narration"?"口播":v.type==="gallery"?"图文":v.type==="doc-agent"?"项目":"科普"),v.title||v.name.replace(".mp4","")),
           React.createElement("div",{className:"v-meta"},formatVideoTime(v.time)),
           React.createElement("div",{className:"v-meta v-meta-row"},
             React.createElement("span",{className:"v-author"},"👤 "+(v.narrator_name||"播主未记录")),
@@ -399,8 +413,15 @@ function App(){
       React.createElement("h1",null,MODES.find(m=>m.key===mode)?.icon+" "+MODES.find(m=>m.key===mode)?.name),
       mode==="narration"?React.createElement(NarrationForm,{profiles,onGenerate:generateInteractive,generating,selectedVideo,optimizedContent}):
       mode==="gallery"?React.createElement(GalleryForm,{profiles,onGenerate:generateInteractive,generating,selectedVideo}):
-      mode==="doc-agent"?React.createElement(DocAgentForm,{profiles,onGenerate:generateInteractive,generating:generating||!!review,selectedVideo}):
+      mode==="doc-agent"?React.createElement(DocAgentForm,{profiles,onGenerate:generateInteractive,generating:generating||!!reviewNeedsAction,selectedVideo}):
       React.createElement(ScienceForm,{profiles,onGenerate:generateInteractive,generating,selectedVideo}),
+      review?React.createElement(ScriptReviewPanel,{
+        review,
+        onConfirm:continueReview,
+        onRevise:reviseReview,
+        onCancel:cancelReview,
+        onFeedbackChange:value=>setReview(r=>r?{...r,feedback:value,countdown:30}:r)
+      }):null,
       generating?React.createElement("div",{className:"status"},React.createElement("span",{className:"spin"}),status):null
     ),
     // Preview
@@ -417,12 +438,6 @@ function App(){
       ):null,
       shareMsg?React.createElement("div",{className:"share-tip"},shareMsg):null,
       images.length>0?React.createElement("div",{className:"imgs"},React.createElement("h3",null,"🖼️ 图片"),React.createElement("div",null,...images.map((u,i)=>React.createElement("img",{key:i,src:API_BASE+u})))):null,
-      review?React.createElement(ScriptReviewPanel,{
-        review,
-        onConfirm:continueReview,
-        onRevise:reviseReview,
-        onFeedbackChange:value=>setReview(r=>r?{...r,feedback:value,countdown:30}:r)
-      }):null,
       selectedVideo?React.createElement("div",{className:"video-details"},
         React.createElement("div",null,React.createElement("strong",null,"播主："),selectedVideo.narrator_name||"未记录"),
         React.createElement("div",null,React.createElement("strong",null,"背景："),selectedVideo.background||selectedVideo.theme||"未记录"),
@@ -572,24 +587,36 @@ function DocAgentForm({profiles,onGenerate,generating,selectedVideo}){
   const [topic,setTopic]=useState("");
   const [source,setSource]=useState("");
   const [audience,setAudience]=useState("beginner");
-  const [style,setStyle]=useState("tech_explainer");
-  const [visualStyle,setVisualStyle]=useState("bright_unified");
-  const [duration,setDuration]=useState(90);
+  const [style,setStyle]=useState("");
+  const [visualStyle,setVisualStyle]=useState("dark_premium");
+  const [duration,setDuration]=useState(60);
   const [focus,setFocus]=useState("");
+  const [requestHeaders,setRequestHeaders]=useState("");
+  const [styleError,setStyleError]=useState("");
   const [pid,setPid]=useState("__free__");
   const p=profiles.find(x=>x.id===pid)||{};
+  const styleOptions=[
+    {value:"github_intro",label:"GitHub 项目介绍"},
+    {value:"news_analysis",label:"资讯解读"},
+    {value:"paper_analysis",label:"论文解读"}
+  ];
 
   useEffect(()=>{
     if(!selectedVideo||selectedVideo.type!=="doc-agent")return;
     setTopic(selectedVideo.topic||selectedVideo.title||"");
     setSource(selectedVideo.content||"");
     setPid(selectedVideo.profile_id||"__free__");
-    setStyle(selectedVideo.theme||"tech_explainer");
-    setVisualStyle((selectedVideo.script&&selectedVideo.script.visual_style)||"bright_unified");
+    setStyle(({tech_explainer:"news_analysis",product_doc:"news_analysis",paper_brief:"paper_analysis"}[selectedVideo.theme])||selectedVideo.theme||"");
+    setStyleError("");
+    setVisualStyle((selectedVideo.script&&selectedVideo.script.visual_style)||"dark_premium");
   },[selectedVideo]);
 
   const go=()=>{
     if(!topic.trim()&&!source.trim())return alert("请输入主题或文档来源");
+    if(!style){
+      setStyleError("请选择内容类型后再生成项目视频");
+      return;
+    }
     const useFree=pid==="__free__";
     const payload={
       type:"doc-agent",
@@ -598,8 +625,9 @@ function DocAgentForm({profiles,onGenerate,generating,selectedVideo}){
       audience,
       style,
       visual_style:visualStyle,
-      duration:Number(duration||90),
+      duration:Number(duration||60),
       focus:focus.trim(),
+      request_headers:requestHeaders.trim(),
       profile_id:useFree?"":p.id,
       name:useFree?"免费默认 TTS":(p.name||""),
       company:useFree?"AI Video":(p.company||""),
@@ -621,6 +649,9 @@ function DocAgentForm({profiles,onGenerate,generating,selectedVideo}){
     React.createElement("div",{className:"fg"},React.createElement("label",null,"📚 文档来源"),
       React.createElement("input",{value:source,onChange:e=>setSource(e.target.value),placeholder:"README.md / https://github.com/owner/repo / 博客 URL / PDF 路径"})
     ),
+    React.createElement("div",{className:"fg"},React.createElement("label",null,"请求头（可选）"),
+      React.createElement("textarea",{value:requestHeaders,onChange:e=>setRequestHeaders(e.target.value),placeholder:"Accept: text/html\nUser-Agent: ...\nReferer: ...\nCookie: ...",rows:5})
+    ),
     React.createElement("div",{className:"fg"},React.createElement("label",null,"🎯 主题（可选，空则从文档推断）"),
       React.createElement("input",{value:topic,onChange:e=>setTopic(e.target.value),placeholder:"例如：3分钟看懂 LangGraph"})
     ),
@@ -633,19 +664,25 @@ function DocAgentForm({profiles,onGenerate,generating,selectedVideo}){
           React.createElement("option",{value:"investor"},"投资/管理")
         )
       ),
-      React.createElement("div",{className:"fg"},React.createElement("label",null,"内容类型"),
-        React.createElement("select",{value:style,onChange:e=>setStyle(e.target.value)},
-          React.createElement("option",{value:"tech_explainer"},"技术科普"),
-          React.createElement("option",{value:"github_intro"},"GitHub 项目介绍"),
-          React.createElement("option",{value:"product_doc"},"产品文档讲解"),
-          React.createElement("option",{value:"paper_brief"},"论文速读")
-        )
+      React.createElement("div",{className:"fg"+(styleError&&!style?" error":"")},React.createElement("label",null,"内容类型"),
+        React.createElement("div",{role:"radiogroup","aria-label":"内容类型",style:{display:"flex",gap:8,flexWrap:"wrap"}},
+          ...styleOptions.map(opt=>React.createElement("div",{
+            key:opt.value,
+            role:"radio",
+            "aria-checked":style===opt.value,
+            tabIndex:0,
+            className:"chip"+(style===opt.value?" on":"")+(styleError&&!style?" error":""),
+            onClick:()=>{setStyle(opt.value);setStyleError("");},
+            onKeyDown:e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setStyle(opt.value);setStyleError("");}}
+          },React.createElement("span",{className:"dot"}),opt.label))
+        ),
+        styleError&&!style?React.createElement("div",{className:"field-error"},"必须选择一个内容类型"):null
       )
     ),
     React.createElement("div",{className:"fg"},React.createElement("label",null,"页面视觉主题"),
       React.createElement("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
-        React.createElement("div",{className:"chip"+(visualStyle==="bright_unified"?" on":""),onClick:()=>setVisualStyle("bright_unified")},React.createElement("span",{className:"dot"}),"明亮统一色"),
-        React.createElement("div",{className:"chip"+(visualStyle==="dark_premium"?" on":""),onClick:()=>setVisualStyle("dark_premium")},React.createElement("span",{className:"dot"}),"深色高级版")
+        React.createElement("div",{className:"chip"+(visualStyle==="dark_premium"?" on":""),onClick:()=>setVisualStyle("dark_premium")},React.createElement("span",{className:"dot"}),"深色高级版"),
+        React.createElement("div",{className:"chip"+(visualStyle==="bright_unified"?" on":""),onClick:()=>setVisualStyle("bright_unified")},React.createElement("span",{className:"dot"}),"明亮统一色")
       )
     ),
     React.createElement("div",{className:"fr"},
@@ -656,7 +693,8 @@ function DocAgentForm({profiles,onGenerate,generating,selectedVideo}){
         React.createElement("input",{value:focus,onChange:e=>setFocus(e.target.value),placeholder:"例如：突出架构、安装使用、商业价值"})
       )
     ),
-    React.createElement("button",{className:"btn",onClick:go,disabled:generating},generating?"生成中...":"🚀 生成文档视频")
+    React.createElement("button",{className:"btn",onClick:go,disabled:generating},generating?"生成中...":"🚀 生成项目视频"),
+    styleError&&!style?React.createElement("div",{className:"field-error"},"请选择内容类型后再生成项目视频"):null
   );
 }
 

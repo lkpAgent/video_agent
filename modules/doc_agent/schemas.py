@@ -110,7 +110,7 @@ class PageScript:
     audience: str
     style: str
     pages: list[PageSpec]
-    visual_style: str = "bright_unified"
+    visual_style: str = "dark_premium"
 
     def to_dict(self) -> dict[str, Any]:
         return {

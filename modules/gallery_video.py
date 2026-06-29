@@ -1176,6 +1176,10 @@ def _record_gallery_playwright(
             args=[
                 f"--window-size={config.VIDEO_WIDTH},{config.VIDEO_HEIGHT}",
                 "--autoplay-policy=no-user-gesture-required",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
             ]
         )
         context = browser.new_context(
