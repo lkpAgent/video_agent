@@ -7,6 +7,13 @@ from pathlib import Path
 from datetime import datetime
 from html import escape
 from urllib.parse import quote
+
+# Windows 默认 GBK 控制台无法输出配音流程日志中的 emoji，会让后台任务在
+# 日志输出阶段异常中断。先统一标准流编码，再初始化 Rich 和其它模块。
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+
 from rich.console import Console
 
 console = Console()
@@ -113,6 +120,14 @@ def _video_public_urls(request: Request, filename: str) -> dict:
         "share_url": f"{base}/video-api/watch/{quoted}",
         "download_url": f"{base}/output/{quoted}",
     }
+
+
+def _coerce_voice_speed(value, default: float = 1.2) -> float:
+    try:
+        speed = float(value)
+    except (TypeError, ValueError):
+        speed = default
+    return max(1.0, min(2.0, round(speed, 2)))
 
 
 def _generate_science_video(task_id, topic, voice, voice_api_type, theme, name, avatar, company, slogan, profile_id=""):
@@ -270,7 +285,7 @@ def _generate_gallery_video(task_id, images, text, title, bgm, voice, voice_api_
         config.TEMP_DIR = orig_temp
 
 
-def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, company, slogan, voice_type, voice_api_type, bg_preset, content, profile_id=""):
+def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, company, slogan, voice_type, voice_api_type, bg_preset, content, profile_id="", voice_speed=1.2):
     try:
         # 独立临时目录
         work_dir = Path(config.TEMP_DIR) / task_id
@@ -338,7 +353,7 @@ def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, 
 
         _set_task(task_id, "audio", "🔊 生成配音...")
         from modules.narration_video import generate_narration_audio
-        audio_data = generate_narration_audio(sentences, voice_type or voice, voice_api_type)
+        audio_data = generate_narration_audio(sentences, voice_type or voice, voice_api_type, _coerce_voice_speed(voice_speed))
 
         # 背景图：优先用预设
         bg_image = ""
@@ -392,7 +407,7 @@ def _generate_narration_video(task_id, topic, n_sentences, voice, name, avatar, 
         config.TEMP_DIR = orig_temp
 
 
-def _generate_doc_agent_video(task_id, topic, source, audience, style, visual_style, duration, focus, voice, voice_api_type, name, avatar, company, slogan, profile_id="", request_headers=""):
+def _generate_doc_agent_video(task_id, topic, source, audience, style, visual_style, duration, focus, voice, voice_api_type, name, avatar, company, slogan, profile_id="", request_headers="", voice_speed=1.2):
     orig_temp = config.TEMP_DIR
     try:
         work_dir = _fresh_task_dir(task_id)
@@ -416,6 +431,7 @@ def _generate_doc_agent_video(task_id, topic, source, audience, style, visual_st
             focus=focus or "",
             voice_id=voice or "",
             voice_type=voice_api_type,
+            voice_speed=_coerce_voice_speed(voice_speed),
             output_filename=filename,
             record=True,
             request_headers=request_headers or "",
@@ -455,7 +471,7 @@ def _generate_doc_agent_video(task_id, topic, source, audience, style, visual_st
         config.TEMP_DIR = orig_temp
 
 
-def _prepare_doc_agent_review(task_id, topic, source, audience, style, visual_style, duration, focus, voice, voice_api_type, name, avatar, company, slogan, profile_id="", request_headers=""):
+def _prepare_doc_agent_review(task_id, topic, source, audience, style, visual_style, duration, focus, voice, voice_api_type, name, avatar, company, slogan, profile_id="", request_headers="", voice_speed=1.2):
     orig_temp = config.TEMP_DIR
     try:
         work_dir = _fresh_task_dir(task_id)
@@ -476,6 +492,7 @@ def _prepare_doc_agent_review(task_id, topic, source, audience, style, visual_st
             "voice": voice, "voice_api_type": voice_api_type, "name": name,
             "avatar": avatar, "company": company, "slogan": slogan, "profile_id": profile_id,
             "request_headers": request_headers or "",
+            "voice_speed": _coerce_voice_speed(voice_speed),
         }
 
         _set_task(task_id, "collecting", "📚 内容采集智能体正在收集资料...")
@@ -582,6 +599,7 @@ def _continue_doc_agent_video(task_id):
             str(work_dir),
             params.get("voice") or "",
             int(params.get("voice_api_type") or 1),
+            _coerce_voice_speed(params.get("voice_speed")),
         )
         (work_dir / "page_script_with_audio.json").write_text(
             json.dumps(script.to_dict(), ensure_ascii=False, indent=2),
@@ -801,7 +819,8 @@ async def api_narration(req: Request, bg: BackgroundTasks):
                 d.get("topic",""), int(d.get("sentences",5)), d.get("voice",""),
                 d.get("name","AI主播"), d.get("avatar",""), d.get("company",""), d.get("slogan",""),
                 d.get("voice_id","") or d.get("voice_type",""), int(d.get("voice_api_type", 1)),
-                d.get("bg_preset",""), d.get("content",""), d.get("profile_id",""))
+                d.get("bg_preset",""), d.get("content",""), d.get("profile_id",""),
+                _coerce_voice_speed(d.get("voice_speed", 1.2)))
     return {"task_id": tid}
 
 
@@ -821,7 +840,8 @@ async def api_doc_agent(req: Request, bg: BackgroundTasks):
                 d.get("focus", ""), d.get("voice", "") or d.get("voice_id", ""),
                 int(d.get("voice_api_type", 1)),
                 d.get("name", ""), d.get("avatar", ""), d.get("company", ""), d.get("slogan", ""),
-                d.get("profile_id", ""), d.get("request_headers", ""))
+                d.get("profile_id", ""), d.get("request_headers", ""),
+                _coerce_voice_speed(d.get("voice_speed", 1.2)))
     return {"task_id": tid}
 
 @app.post("/video-api/generate/doc-agent/{task_id}/revise")

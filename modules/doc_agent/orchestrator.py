@@ -25,6 +25,7 @@ def build_document_video(
     focus: str = "",
     voice_id: str = "",
     voice_type: int = 1,
+    voice_speed: float = 1.2,
     output_filename: str = "",
     record: bool = True,
     request_headers: str = "",
@@ -61,7 +62,7 @@ def build_document_video(
     console.print("[bold]Step 3/5: HTML 页面智能体选择页面样式[/bold]")
     console.print("   页面类型: " + ", ".join(page.page_type for page in script.pages))
 
-    script = generate_page_audio(script, str(work_dir), voice_id, voice_type)
+    script = generate_page_audio(script, str(work_dir), voice_id, voice_type, voice_speed)
     (work_dir / "page_script_with_audio.json").write_text(
         json.dumps(script.to_dict(), ensure_ascii=False, indent=2),
         encoding="utf-8",

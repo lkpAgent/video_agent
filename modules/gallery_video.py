@@ -1287,7 +1287,9 @@ def _mux_gallery_audio(
         
         # 2. 混合所有 TTS 片段
         mix_inputs = "".join(f"[a{i}]" for i in range(len(audio_files)))
-        filter_parts.append(f"{mix_inputs}amix=inputs={len(audio_files)}:duration=longest:dropout_transition=0[tts_mix]")
+        filter_parts.append(
+            f"{mix_inputs}amix=inputs={len(audio_files)}:duration=longest:dropout_transition=0:normalize=0[tts_mix]"
+        )
         
         # 3. BGM 处理
         if bgm_path and os.path.exists(bgm_path):
@@ -1298,7 +1300,7 @@ def _mux_gallery_audio(
                 f"[{bgm_idx}:a]atrim=0:{total_dur},volume=0.25,afade=t=in:d=1,afade=t=out:st={total_dur - 1}:d=1[bgm_fade]"
             )
             filter_parts.append(
-                f"[tts_mix][bgm_fade]amix=inputs=2:duration=first:weights=1 0.35[aout]"
+                f"[tts_mix][bgm_fade]amix=inputs=2:duration=first:weights=1 0.35:normalize=0[aout]"
             )
         else:
             filter_parts.append(f"[tts_mix]volume=1.0[aout]")

@@ -24,9 +24,22 @@ from config import config
 
 console = Console()
 
+
+def _doubao_session() -> requests.Session:
+    """Create a direct session for Volcengine TTS.
+
+    Desktop environments sometimes export a stale local proxy (for example
+    127.0.0.1:9).  Requests otherwise inherits it and never reaches
+    openspeech.bytedance.com.
+    """
+    session = requests.Session()
+    session.trust_env = False
+    return session
+
+
 # ====== 统一入口 ======
 
-def tts_generate(text: str, output_path: str, voice_id: str = "", voice_type: int = 1) -> str:
+def tts_generate(text: str, output_path: str, voice_id: str = "", voice_type: int = 1, speed: float = 1.0) -> str:
     """
     统一 TTS 接口：根据 TTS_PROVIDER 配置自动选择引擎
     """
@@ -37,8 +50,17 @@ def tts_generate(text: str, output_path: str, voice_id: str = "", voice_type: in
         return _elevenlabs_tts(text, output_path)
     elif provider == "doubao":
         if int(voice_type or 1) == 2:
-            return _doubao_synthesis_tts(text, output_path, voice_id)
-        return _doubao_tts(text, output_path, voice_id)
+            return _doubao_synthesis_tts(text, output_path, voice_id, speed)
+        try:
+            return _doubao_tts(text, output_path, voice_id, speed)
+        except RuntimeError as exc:
+            if "豆包 TTS HTTP 400" not in str(exc):
+                raise
+            console.print(f"[yellow]⚠️ 豆包声音复刻接口返回 400，尝试切换到语音合成接口: {exc}[/yellow]")
+            try:
+                return _doubao_synthesis_tts(text, output_path, voice_id, speed)
+            except Exception as fallback_exc:
+                raise RuntimeError(f"{exc}; 语音合成接口兜底也失败: {fallback_exc}") from fallback_exc
     else:
         return _edge_tts_sync(text, output_path, voice_id)
 
@@ -84,7 +106,7 @@ async def _edge_tts_async(text: str, output_path: str, retries=3, voice_id: str 
 
 # ====== 豆包 TTS（声音复刻）======
 
-def _doubao_tts(text: str, output_path: str, voice_id: str = "") -> str:
+def _doubao_tts(text: str, output_path: str, voice_id: str = "", speed: float = 1.0) -> str:
     """豆包（火山引擎）声音复刻 TTS"""
     api_key = config.DOUBAO_TTS_API_KEY
     voice_type = voice_id or config.DOUBAO_TTS_VOICE_TYPE
@@ -97,15 +119,25 @@ def _doubao_tts(text: str, output_path: str, voice_id: str = "") -> str:
     url = "https://openspeech.bytedance.com/api/v1/tts"
     headers = {"x-api-key": api_key, "Content-Type": "application/json"}
 
+    speed_ratio = _clamp_tts_speed(speed)
+
     payload = {
         "app": {"cluster": config.DOUBAO_TTS_CLUSTER},
         "user": {"uid": "video_agent"},
-        "audio": {"voice_type": voice_type, "encoding": "mp3", "speed_ratio": 1.0},
+        "audio": {"voice_type": voice_type, "encoding": "mp3", "speed_ratio": speed_ratio},
         "request": {"reqid": uuid.uuid4().hex, "text": text, "operation": "query"}
     }
 
-    resp = requests.post(url, json=payload, headers=headers, timeout=120)
-    resp.raise_for_status()
+    session = _doubao_session()
+    resp = session.post(url, json=payload, headers=headers, timeout=120)
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as exc:
+        detail = _short_response_text(resp)
+        raise RuntimeError(
+            f"豆包 TTS HTTP {resp.status_code}: {detail} "
+            f"(voice_type={voice_type}, cluster={config.DOUBAO_TTS_CLUSTER})"
+        ) from exc
     result = resp.json()
 
     if result.get("code") != 3000:
@@ -158,7 +190,7 @@ def _decode_doubao_audio_chunks(resp) -> bytes:
     return b"".join(audio_chunks)
 
 
-def _doubao_synthesis_tts(text: str, output_path: str, voice_id: str = "") -> str:
+def _doubao_synthesis_tts(text: str, output_path: str, voice_id: str = "", speed: float = 1.0) -> str:
     """豆包 Seed-TTS 2.0 语音合成接口。"""
     api_key = config.DOUBAO_TTS_API_KEY
     speaker = voice_id or config.DOUBAO_TTS_VOICE_TYPE
@@ -176,17 +208,29 @@ def _doubao_synthesis_tts(text: str, output_path: str, voice_id: str = "") -> st
         "req_params": {
             "text": text,
             "speaker": speaker,
-            "audio_params": {"format": "mp3", "sample_rate": 24000},
+            "audio_params": {
+                "format": "mp3",
+                "sample_rate": 24000,
+                "speech_rate": _doubao_speech_rate(speed),
+            },
         }
     }
-    resp = requests.post(
+    session = _doubao_session()
+    resp = session.post(
         config.DOUBAO_TTS_SYNTHESIS_URL,
         json=payload,
         headers=headers,
         timeout=120,
         stream=True,
     )
-    resp.raise_for_status()
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as exc:
+        detail = _short_response_text(resp)
+        raise RuntimeError(
+            f"豆包语音合成 HTTP {resp.status_code}: {detail} "
+            f"(speaker={speaker}, resource_id={config.DOUBAO_TTS_SYNTHESIS_RESOURCE_ID})"
+        ) from exc
 
     content_type = resp.headers.get("Content-Type", "").lower()
     if "audio/" in content_type or "application/octet-stream" in content_type:
@@ -231,12 +275,36 @@ def _elevenlabs_tts(text: str, output_path: str) -> str:
     }
 
     resp = requests.post(url, json=data, headers=headers, timeout=120)
-    resp.raise_for_status()
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as exc:
+        detail = _short_response_text(resp)
+        raise RuntimeError(f"ElevenLabs TTS HTTP {resp.status_code}: {detail}") from exc
 
     with open(output_path, "wb") as f:
         f.write(resp.content)
 
     return output_path
+
+
+def _short_response_text(resp, limit: int = 500) -> str:
+    text = getattr(resp, "text", "") or ""
+    text = " ".join(text.split())
+    return text[:limit] or "<empty response>"
+
+
+def _clamp_tts_speed(speed: float) -> float:
+    try:
+        value = float(speed or 1.0)
+    except (TypeError, ValueError):
+        value = 1.0
+    return max(0.5, min(2.0, value))
+
+
+def _doubao_speech_rate(speed: float) -> int:
+    """Map 0.5x-2.0x to Volcengine speech_rate -50..100."""
+    value = _clamp_tts_speed(speed)
+    return int(round((value - 1.0) * 100))
 
 
 # ====== 兼容旧接口（科普模式用）======

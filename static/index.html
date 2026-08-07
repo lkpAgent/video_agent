@@ -272,6 +272,20 @@ function ScriptReviewPanel({review,onConfirm,onRevise,onCancel,onFeedbackChange}
   );
 }
 
+function VoiceSpeedControl({value,onChange}){
+  return React.createElement("div",{className:"fg"},
+    React.createElement("label",null,"语音速度 "+Number(value||1.2).toFixed(1)+"x"),
+    React.createElement("input",{
+      type:"range",
+      min:"1.0",
+      max:"2.0",
+      step:"0.1",
+      value:value,
+      onChange:e=>onChange(Number(e.target.value))
+    })
+  );
+}
+
 // ====== App ======
 function App(){
   const [mode,setMode]=useState("narration");
@@ -455,6 +469,7 @@ function NarrationForm({profiles,onGenerate,generating,selectedVideo,optimizedCo
   const [pid,setPid]=useState("__free__");
   const [bg,setBg]=useState("");const [bgs,setBgs]=useState([]);
   const [useContent,setUseContent]=useState(true);
+  const [voiceSpeed,setVoiceSpeed]=useState(1.2);
   const p=profiles.find(x=>x.id===pid)||{};
 
   useEffect(()=>{fetch(`${API_BASE}/video-api/backgrounds`).then(r=>r.json()).then(d=>{setBgs(d.backgrounds||[]);if(d.backgrounds&&d.backgrounds[0])setBg(current=>current||d.backgrounds[0].name)})},[]);
@@ -473,7 +488,7 @@ function NarrationForm({profiles,onGenerate,generating,selectedVideo,optimizedCo
   const go=()=>{
     if(!topic.trim())return alert("请输入主题");
     const useFree=pid==="__free__";
-    const payload={type:"narration",topic,profile_id:useFree?"":p.id,name:useFree?"免费默认 TTS":(p.name||""),company:useFree?"AI Video":(p.company||""),slogan:useFree?"Edge TTS":(p.slogan||""),avatar:useFree?"":(p.avatar||""),voice_id:useFree?"":(p.voice_id||""),voice_api_type:useFree?1:Number(p.voice_type||1),bg_preset:bg};
+    const payload={type:"narration",topic,profile_id:useFree?"":p.id,name:useFree?"免费默认 TTS":(p.name||""),company:useFree?"AI Video":(p.company||""),slogan:useFree?"Edge TTS":(p.slogan||""),avatar:useFree?"":(p.avatar||""),voice_id:useFree?"":(p.voice_id||""),voice_api_type:useFree?1:Number(p.voice_type||1),bg_preset:bg,voice_speed:Number(voiceSpeed||1.2)};
     if(useContent&&content.trim()){payload.content=content.trim();payload.sentences=0;}
     else payload.sentences=5;
     onGenerate(payload);
@@ -493,6 +508,7 @@ function NarrationForm({profiles,onGenerate,generating,selectedVideo,optimizedCo
         ...bgs.map(b=>React.createElement("div",{key:b.name,className:"bg-opt"+(bg===b.name?" on":""),onClick:()=>setBg(b.name),title:b.name},React.createElement("img",{src:API_BASE+b.url,style:{width:"100%",height:"100%",objectFit:"cover"}})))
       )
     ),
+    React.createElement(VoiceSpeedControl,{value:voiceSpeed,onChange:setVoiceSpeed}),
     React.createElement("button",{className:"btn",onClick:go,disabled:generating},generating?"生成中...":"🚀 生成视频")
   );
 }
@@ -594,6 +610,7 @@ function DocAgentForm({profiles,onGenerate,generating,selectedVideo}){
   const [requestHeaders,setRequestHeaders]=useState("");
   const [styleError,setStyleError]=useState("");
   const [pid,setPid]=useState("__free__");
+  const [voiceSpeed,setVoiceSpeed]=useState(1.2);
   const p=profiles.find(x=>x.id===pid)||{};
   const styleOptions=[
     {value:"github_intro",label:"GitHub 项目介绍"},
@@ -634,7 +651,8 @@ function DocAgentForm({profiles,onGenerate,generating,selectedVideo}){
       slogan:useFree?"Edge TTS":(p.slogan||""),
       avatar:useFree?"":(p.avatar||""),
       voice_id:useFree?"":(p.voice_id||""),
-      voice_api_type:useFree?1:Number(p.voice_type||1)
+      voice_api_type:useFree?1:Number(p.voice_type||1),
+      voice_speed:Number(voiceSpeed||1.2)
     };
     onGenerate(payload);
   };
@@ -693,6 +711,7 @@ function DocAgentForm({profiles,onGenerate,generating,selectedVideo}){
         React.createElement("input",{value:focus,onChange:e=>setFocus(e.target.value),placeholder:"例如：突出架构、安装使用、商业价值"})
       )
     ),
+    React.createElement(VoiceSpeedControl,{value:voiceSpeed,onChange:setVoiceSpeed}),
     React.createElement("button",{className:"btn",onClick:go,disabled:generating},generating?"生成中...":"🚀 生成项目视频"),
     styleError&&!style?React.createElement("div",{className:"field-error"},"请选择内容类型后再生成项目视频"):null
   );

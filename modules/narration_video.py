@@ -71,7 +71,12 @@ async def _generate_sentence_audio(text: str, output_path: str, voice: str):
     await communicate.save(output_path)
 
 
-def generate_narration_audio(sentences: list[str], voice_id: str = "", voice_type: int = 1) -> list[dict]:
+def generate_narration_audio(
+    sentences: list[str],
+    voice_id: str = "",
+    voice_type: int = 1,
+    voice_speed: float = 1.2,
+) -> list[dict]:
     """
     逐句生成音频 + ffprobe 测真实时长 → 精准同步
     """
@@ -90,9 +95,12 @@ def generate_narration_audio(sentences: list[str], voice_id: str = "", voice_typ
 
     audio_data = []
     audio_files = []
+    use_native_speed = provider == "doubao"
     for i, s in enumerate(sentences):
         path = os.path.join(audio_dir, f"s_{i+1:02d}.mp3")
-        tts_generate(s, path, voice_id, voice_type)
+        tts_generate(s, path, voice_id, voice_type, voice_speed if use_native_speed else 1.0)
+        if not use_native_speed:
+            path = str(_speed_up_audio(Path(path), voice_speed))
 
         dur = _get_mp3_duration(path)
         console.print(f"   [dim]ffprobe 实测: {dur:.2f}s, 字数估算: {len(s)/4:.1f}s[/dim]")
@@ -133,6 +141,44 @@ def _get_mp3_duration(path: str) -> float:
         return float(result.stdout.strip())
     except Exception:
         return 0.0
+
+
+def _speed_up_audio(path: Path, speed: float) -> Path:
+    """Speed up a generated audio clip while keeping pitch stable."""
+    if speed <= 1.01:
+        return path
+    fast_path = path.with_name(f"{path.stem}_x{str(speed).replace('.', '_')}{path.suffix}")
+    filters = _atempo_filters(speed)
+    import subprocess
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", str(path),
+                "-filter:a", filters,
+                "-vn", str(fast_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        ).check_returncode()
+        if fast_path.exists() and fast_path.stat().st_size > 100:
+            return fast_path
+    except Exception as exc:
+        console.print(f"[yellow]⚠️ 音频加速失败，使用原始语速: {exc}[/yellow]")
+    return path
+
+
+def _atempo_filters(speed: float) -> str:
+    parts: list[str] = []
+    remaining = speed
+    while remaining > 2.0:
+        parts.append("atempo=2.0")
+        remaining /= 2.0
+    while remaining < 0.5:
+        parts.append("atempo=0.5")
+        remaining /= 0.5
+    parts.append(f"atempo={remaining:.3f}")
+    return ",".join(parts)
 
 
 def _merge_narration_audio(audio_paths: list[str], output_path: str):

@@ -36,6 +36,7 @@ def build_document_html(script: PageScript, work_dir: str) -> str:
             audio_tags.append(
                 f'<audio id="page-audio-{idx}" data-start="{acc:.2f}" '
                 f'data-duration="{page.duration:.2f}" data-track-index="{100 + idx}" '
+                f'data-volume="1.0" '
                 f'src="./{rel.as_posix()}"></audio>'
             )
         acc += page.duration

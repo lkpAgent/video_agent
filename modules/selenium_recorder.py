@@ -13,6 +13,22 @@ from config import config
 console = Console()
 
 
+def _stop_recording_process(process: subprocess.Popen | None, label: str, timeout: int = 10):
+    """Stop ffmpeg reliably so a slow X11 teardown does not fail the task."""
+    if not process or process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        console.print(f"[yellow]{label} 未在 {timeout}s 内退出，正在强制结束...[/yellow]")
+        process.kill()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            console.print(f"[yellow]{label} 强制结束后仍未退出，将继续检查已生成的视频文件[/yellow]")
+
+
 def _log_server_progress(current: int, total: int, label: str):
     """非交互日志环境无法渲染动态进度条，定期输出普通日志。"""
     if console.is_terminal or total <= 0:
@@ -41,7 +57,10 @@ def _record_with_x11(html_path: str, output_dir: str, duration: float) -> str:
     time.sleep(1)
     os.environ["DISPLAY"] = f":{display_num}"
 
-    webm_path = os.path.join(output_dir, "recorded.webm")
+    # libvpx is too slow for 1080x1920 X11 capture on the server.  H.264 with
+    # the ultrafast preset keeps up in real time and can be passed directly to
+    # the existing ffmpeg audio muxing step.
+    video_path = os.path.join(output_dir, "recorded.mp4")
     driver = None
     ffmpeg_proc = None
 
@@ -57,12 +76,13 @@ def _record_with_x11(html_path: str, output_dir: str, duration: float) -> str:
         time.sleep(1)
 
         # 3. 开 ffmpeg 录制
+        recording_seconds = max(1, int(duration) + 2)
         ffmpeg_proc = subprocess.Popen([
-            "ffmpeg", "-f", "x11grab", "-video_size", f"{config.VIDEO_WIDTH}x{config.VIDEO_HEIGHT}",
+            "ffmpeg", "-nostdin", "-f", "x11grab", "-video_size", f"{config.VIDEO_WIDTH}x{config.VIDEO_HEIGHT}",
             "-framerate", "30", "-i", f":{display_num}",
-            "-c:v", "libvpx", "-crf", "10", "-b:v", "2M",
+            "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-crf", "28",
             "-pix_fmt", "yuv420p",
-            "-t", str(int(duration) + 2), "-y", webm_path
+            "-movflags", "+faststart", "-t", str(recording_seconds), "-y", video_path
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         # 4. 录屏启动后立即启动 JS 时间线，避免页面切换与最终音频产生固定偏移。
@@ -80,25 +100,23 @@ def _record_with_x11(html_path: str, output_dir: str, duration: float) -> str:
                 progress.advance(task)
                 _log_server_progress(current, wait_ms // 1000, "录制进度")
 
-        # 先停止录屏，再关闭浏览器，避免把 Xvfb 的空白/X 画面录进视频尾部。
-        ffmpeg_proc.terminate()
-        ffmpeg_proc.wait(timeout=10)
+        # 等待 ffmpeg 录满设定时长并正常写完 MP4 尾部；提前终止会产生无法解码的零字节文件。
+        ffmpeg_proc.wait(timeout=max(30, recording_seconds + 15))
         ffmpeg_proc = None
         driver.quit()
         driver = None
 
     finally:
         if ffmpeg_proc and ffmpeg_proc.poll() is None:
-            ffmpeg_proc.terminate()
-            ffmpeg_proc.wait(timeout=10)
+            _stop_recording_process(ffmpeg_proc, "ffmpeg 录制进程")
         if driver:
             driver.quit()
         xvfb_proc.terminate()
         xvfb_proc.wait(timeout=5)
 
-    if os.path.exists(webm_path) and os.path.getsize(webm_path) > 1000:
-        console.print(f"✅ 录制完成: {webm_path}")
-        return webm_path
+    if os.path.exists(video_path) and os.path.getsize(video_path) > 1000:
+        console.print(f"✅ 录制完成: {video_path}")
+        return video_path
     console.print("[red]录制失败[/red]")
     return ""
 
@@ -147,8 +165,7 @@ def _record_with_screenshots(html_path: str, output_dir: str, duration: float) -
     finally:
         driver.quit()
         if ffmpeg_proc and ffmpeg_proc.poll() is None:
-            ffmpeg_proc.terminate()
-            ffmpeg_proc.wait(timeout=10)
+            _stop_recording_process(ffmpeg_proc, "ffmpeg 录制进程")
 
     if os.path.exists(webm_path) and os.path.getsize(webm_path) > 1000:
         console.print(f"✅ 录制完成: {webm_path}")
@@ -288,7 +305,12 @@ def _create_firefox_driver(headless: bool):
     firefox_binary = _find_firefox_binary()
     if firefox_binary:
         opts.binary_location = firefox_binary
+    # Firefox renders local HTML during recording and must not inherit a stale
+    # system proxy from the desktop environment.
+    opts.set_preference("network.proxy.type", 0)
     geckodriver = _find_geckodriver()
+    proxy_keys = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
+    saved_proxies = {key: os.environ.pop(key) for key in proxy_keys if key in os.environ}
     try:
         service = Service(executable_path=geckodriver) if geckodriver else Service()
         return webdriver.Firefox(options=opts, service=service)
@@ -297,6 +319,8 @@ def _create_firefox_driver(headless: bool):
         raise RuntimeError(
             "无法启动 Firefox Selenium。" + detail + f" 原因: {exc}"
         ) from exc
+    finally:
+        os.environ.update(saved_proxies)
 
 
 def _find_firefox_binary() -> str:
